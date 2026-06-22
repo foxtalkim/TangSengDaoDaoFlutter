@@ -131,6 +131,7 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
   late String _groupName;
   String _groupNotice = '';
   String _groupRemark = '';
+  late String _groupAvatarUrl;
   int _groupMemberCount = 0;
   int _myRole = 0;
   ChatGroup? _groupInfo;
@@ -275,6 +276,7 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
     _screenshotNotify = widget.conversation.notifyScreenshot;
     _groupNickname = widget.loginName;
     _groupName = widget.conversation.name;
+    _groupAvatarUrl = _resolvedGroupAvatarUrl(widget.conversation.avatarPath);
     _groupMemberCount = 0; // 由 _loadGroupInfo 拿 server 权威值填, 不再 regex/默认2 瞎猜
     if (_isGroup) {
       unawaited(_loadGroupNickname());
@@ -282,6 +284,26 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
       unawaited(_loadGroupMembers());
       unawaited(_loadGroupRemark());
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationSettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversation.channelId != widget.conversation.channelId ||
+        oldWidget.conversation.avatarPath != widget.conversation.avatarPath) {
+      _groupAvatarUrl = _resolvedGroupAvatarUrl(widget.conversation.avatarPath);
+    }
+  }
+
+  String _resolvedGroupAvatarUrl(String imageUrl) {
+    if (!_isGroup) return imageUrl;
+    final groupNo = widget.conversation.channelId.trim();
+    if (groupNo.isEmpty) return imageUrl;
+    return AvatarResolver.group(
+      config: widget.config,
+      groupNo: groupNo,
+      imageUrl: imageUrl,
+    );
   }
 
   Future<void> _loadGroupRemark() async {
@@ -485,7 +507,7 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
                   label: widget.conversation.avatarLabel,
                   size: 28,
                   colors: widget.conversation.colors,
-                  imageUrl: widget.conversation.avatarPath,
+                  imageUrl: _groupAvatarUrl,
                 ),
                 onTap: () => unawaited(_changeGroupAvatar()),
               ),
@@ -1366,19 +1388,32 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
       );
       return;
     }
-    await pushPage(
-      context,
-      GroupAvatarPage(
-        groupNo: groupNo,
-        channelType: widget.conversation.channelType,
-        isAdmin: _isAdmin,
-        avatarUrl: widget.conversation.avatarPath,
-        avatarLabel: widget.conversation.avatarLabel,
-        colors: widget.conversation.colors,
-        socialGateway: widget.socialGateway,
-        imGateway: widget.imGateway,
+    final updatedAvatarUrl = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => GroupAvatarPage(
+          groupNo: groupNo,
+          channelType: widget.conversation.channelType,
+          isAdmin: _isAdmin,
+          avatarUrl: _groupAvatarUrl,
+          avatarLabel: widget.conversation.avatarLabel,
+          colors: widget.conversation.colors,
+          socialGateway: widget.socialGateway,
+          imGateway: widget.imGateway,
+          onAvatarUpdated: (updatedAvatarUrl) {
+            if (!mounted || updatedAvatarUrl.isEmpty) return;
+            setState(() {
+              _groupAvatarUrl = updatedAvatarUrl;
+            });
+          },
+        ),
       ),
     );
+    if (!mounted || updatedAvatarUrl == null || updatedAvatarUrl.isEmpty) {
+      return;
+    }
+    setState(() {
+      _groupAvatarUrl = updatedAvatarUrl;
+    });
   }
 
   /// Push the group-admin tools page. Reuses `GroupManagePage`,

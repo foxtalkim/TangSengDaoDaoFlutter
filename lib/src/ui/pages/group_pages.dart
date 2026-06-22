@@ -2,6 +2,7 @@
 import 'dart:async' show unawaited;
 import 'dart:io' show File;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart' show Dio;
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
@@ -2745,6 +2746,7 @@ class GroupAvatarPage extends StatefulWidget {
     required this.colors,
     this.socialGateway,
     this.imGateway,
+    this.onAvatarUpdated,
   });
 
   final String groupNo;
@@ -2757,6 +2759,7 @@ class GroupAvatarPage extends StatefulWidget {
   final List<Color> colors;
   final ChatSocialGateway? socialGateway;
   final ChatImGateway? imGateway;
+  final ValueChanged<String>? onAvatarUpdated;
 
   @override
   State<GroupAvatarPage> createState() => GroupAvatarPageState();
@@ -2827,7 +2830,8 @@ class GroupAvatarPageState extends State<GroupAvatarPage> {
                         ),
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: () => Navigator.of(context).maybePop(),
+                          onTap: () =>
+                              Navigator.of(context).maybePop(_displayUrl),
                           child: SizedBox(
                             width: 44,
                             height: 44,
@@ -2895,6 +2899,17 @@ class GroupAvatarPageState extends State<GroupAvatarPage> {
     MoyuActionSheet.show(context, items: items);
   }
 
+  void _evictCachedAvatars(Iterable<String> urls) {
+    for (final url in urls) {
+      if (url.trim().isEmpty) continue;
+      unawaited(
+        CachedNetworkImage.evictFromCache(
+          url,
+        ).then<void>((_) {}).catchError((_) {}),
+      );
+    }
+  }
+
   Future<void> _pickAndUpload(ImageSource source) async {
     final t = AppLocalizations.of(context);
     final gateway = widget.socialGateway;
@@ -2920,21 +2935,29 @@ class GroupAvatarPageState extends State<GroupAvatarPage> {
       // square crop — 对齐 iOS m:111 AspectRatioPresetSquare.
       final croppedPath = await launcher(context, File(picked.path));
       if (croppedPath == null || !mounted) return;
+      final staleAvatarUrls = <String>{
+        if (widget.avatarUrl.isNotEmpty) widget.avatarUrl,
+        if (_displayUrl.isNotEmpty) _displayUrl,
+      };
       setState(() => _uploading = true);
       await gateway.uploadGroupAvatar(
         groupNo: widget.groupNo,
         filePath: croppedPath,
       );
       if (!mounted) return;
-      await widget.imGateway?.refreshChannel(
-        channelId: widget.groupNo,
-        channelType: widget.channelType,
-      );
-      if (!mounted) return;
+      _evictCachedAvatars(staleAvatarUrls);
       setState(() {
         _uploading = false;
         _cacheBuster = DateTime.now().millisecondsSinceEpoch;
       });
+      widget.onAvatarUpdated?.call(_displayUrl);
+      unawaited(
+        widget.imGateway?.refreshChannel(
+              channelId: widget.groupNo,
+              channelType: widget.channelType,
+            ) ??
+            Future.value(),
+      );
       MoyuToast.show(context, t.groupAvatarUpdated);
     } catch (error) {
       if (!mounted) return;
