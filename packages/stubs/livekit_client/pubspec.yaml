@@ -1,0 +1,11 @@
+name: livekit_client
+description: Free-edition stub for LiveKit APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter

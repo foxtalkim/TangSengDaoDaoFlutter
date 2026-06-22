@@ -1,0 +1,7 @@
+name: firebase_messaging
+description: Module-off stub for Firebase Messaging APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3

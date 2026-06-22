@@ -1,0 +1,13 @@
+name: chewie
+description: Module-off stub for Chewie video controls.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  video_player:
+    path: ../video_player

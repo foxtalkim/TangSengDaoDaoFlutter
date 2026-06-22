@@ -1,0 +1,11 @@
+name: image_cropper
+description: Module-off stub for image cropper APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter

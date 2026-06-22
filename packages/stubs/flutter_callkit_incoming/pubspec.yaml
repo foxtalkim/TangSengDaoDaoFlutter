@@ -1,0 +1,7 @@
+name: flutter_callkit_incoming
+description: Free-edition stub for CallKit/ConnectionService APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3

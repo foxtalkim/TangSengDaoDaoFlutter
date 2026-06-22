@@ -1,0 +1,7 @@
+name: proximity_sensor
+description: Free-edition stub for proximity sensor APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3

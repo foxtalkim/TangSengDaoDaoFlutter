@@ -1,0 +1,11 @@
+name: lottie
+description: Module-off stub for Lottie rendering APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter

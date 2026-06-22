@@ -1,0 +1,11 @@
+name: video_player
+description: Module-off stub for video_player APIs.
+version: 0.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter

@@ -1,0 +1,133 @@
+platform :ios, '13.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+  'Free-Debug' => :debug,
+  'Free-Profile' => :release,
+  'Free-Release' => :release,
+  'Pro-Debug' => :debug,
+  'Pro-Profile' => :release,
+  'Pro-Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+module_native_configurations = [
+  'Debug',
+  'Release',
+  'Profile',
+  'Pro-Debug',
+  'Pro-Release',
+  'Pro-Profile',
+]
+module_ios_rtc_pods = [
+  'flutter_callkit_incoming',
+  'flutter_webrtc',
+  'livekit_client',
+  'proximity_sensor',
+  'WebRTC-SDK',
+]
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  pod 'SwiftTryCatch', :path => 'Vendor/SwiftTryCatch'
+
+  pod 'AMap3DMap', '~> 7.4.0', :configurations => module_native_configurations
+  pod 'AMapSearch', '~> 7.3.0', :configurations => module_native_configurations
+  pod 'AMapLocation', '~> 2.6.5', :configurations => module_native_configurations
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  base_permission_definitions = [
+    '$(inherited)',
+    'PERMISSION_PHOTOS=1',
+    'PERMISSION_CONTACTS=1',
+  ]
+  module_permission_definitions = base_permission_definitions + [
+    'PERMISSION_MICROPHONE=1',
+    'PERMISSION_CAMERA=1',
+    'PERMISSION_LOCATION=1',
+  ]
+
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    if target.name == 'Pods-Runner'
+      target.dependencies.delete_if do |dependency|
+        dependency.name.start_with?('AMap') ||
+          module_ios_rtc_pods.any? { |pod_name| dependency.name.start_with?(pod_name) }
+      end
+    end
+
+    target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] =
+        if module_native_configurations.include?(config.name)
+          module_permission_definitions
+        else
+          base_permission_definitions
+        end
+
+    end
+  end
+
+  module_free_scrub_patterns = [
+    'AMap',
+    'MAMap',
+    'flutter_callkit_incoming',
+    'flutter_webrtc',
+    'livekit_client',
+    'proximity_sensor',
+    'WebRTC-SDK',
+    'WebRTC',
+    'LiveKit',
+  ]
+  runner_support_dir = File.join(
+    __dir__,
+    'Pods',
+    'Target Support Files',
+    'Pods-Runner'
+  )
+  ['free-debug', 'free-profile', 'free-release'].each do |suffix|
+    path = File.join(runner_support_dir, "Pods-Runner.#{suffix}.xcconfig")
+    next unless File.exist?(path)
+
+    contents = File.read(path)
+    module_free_scrub_patterns.each do |pattern|
+      contents = contents
+        .gsub(/\s+"?\$\{PODS_CONFIGURATION_BUILD_DIR\}\/#{Regexp.escape(pattern)}[^"\s]*"?/, '')
+        .gsub(/\s+"?\$\{PODS_ROOT\}\/#{Regexp.escape(pattern)}[^"\s]*"?/, '')
+        .gsub(/\s+"?\$\{PODS_XCFRAMEWORKS_BUILD_DIR\}\/#{Regexp.escape(pattern)}[^"\s]*"?/, '')
+        .gsub(/\s+"-F\$\{PODS_CONFIGURATION_BUILD_DIR\}\/#{Regexp.escape(pattern)}[^"]*"/, '')
+        .gsub(/\s+"-F\$\{PODS_XCFRAMEWORKS_BUILD_DIR\}\/#{Regexp.escape(pattern)}[^"]*"/, '')
+        .gsub(/\s+-framework\s+"#{Regexp.escape(pattern)}[^"]*"/, '')
+    end
+    File.write(path, contents)
+  end
+end

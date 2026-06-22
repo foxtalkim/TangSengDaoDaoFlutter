@@ -1,0 +1,25 @@
+dependency_overrides:
+  wukongimfluttersdk:
+    path: packages/wukongimfluttersdk_patched
+  file_picker:
+    path: packages/stubs/file_picker
+  open_filex:
+    path: packages/stubs/open_filex
+  image_cropper:
+    path: packages/stubs/image_cropper
+  livekit_client:
+    path: packages/stubs/livekit_client
+  flutter_callkit_incoming:
+    path: packages/stubs/flutter_callkit_incoming
+  proximity_sensor:
+    path: packages/stubs/proximity_sensor
+  chewie:
+    path: packages/stubs/chewie
+  video_player:
+    path: packages/stubs/video_player
+  lottie:
+    path: packages/stubs/lottie
+  firebase_messaging:
+    path: packages/stubs/firebase_messaging
+  flutter_local_notifications:
+    path: packages/stubs/flutter_local_notifications
