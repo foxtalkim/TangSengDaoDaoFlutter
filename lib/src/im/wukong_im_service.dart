@@ -27,6 +27,7 @@ import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../auth/user_session.dart';
+import '../db/database.dart';
 import '../media/chat_media_service.dart';
 import '../modules/feature_registry.dart';
 import '../modules/module_ids.dart';
@@ -875,7 +876,10 @@ class WukongImService implements ChatImGateway {
     final options = Options.newDefault(
       session.uid,
       session.imToken,
-      databaseScope: serverStorageScope(client.config),
+      databaseScope: serverAccountScope(
+        serverStorageScope(client.config),
+        session.uid,
+      ),
     );
     options.getAddr = (complete) async {
       try {
