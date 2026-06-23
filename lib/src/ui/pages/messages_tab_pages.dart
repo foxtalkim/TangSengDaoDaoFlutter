@@ -28,7 +28,7 @@ import '../moyu_widgets.dart';
 import '../settings_layout.dart' show kTabBarReservedHeight;
 import 'friend_pages.dart'
     show AddFriendPage, ContactDetailPage, WebLoginConfirmPage;
-import 'group_pages.dart' show CreateGroupPage, GroupDetailPage, GroupTile;
+import 'group_pages.dart' show CreateGroupPage, GroupTile;
 import 'scan_page.dart' show ScanPage;
 import 'search_message_widgets.dart'
     show SearchMessageTile, SearchTabChip, searchConversationFromGlobalMessage;
@@ -556,6 +556,7 @@ class MessagesPageState extends State<MessagesPage> {
         serverAppConfig: widget.serverAppConfig,
         onOpenChat: widget.onOpenChat,
         onOpenContactChat: widget.onOpenContactChat,
+        onOpenGroupChat: widget.onOpenGroupChat,
       ),
     );
   }
@@ -682,6 +683,7 @@ class GlobalSearchPage extends StatefulWidget {
     required this.groups,
     required this.onOpenChat,
     required this.onOpenContactChat,
+    required this.onOpenGroupChat,
     this.socialGateway,
     this.config,
     this.serverAppConfig = const ChatServerAppConfig(),
@@ -695,6 +697,7 @@ class GlobalSearchPage extends StatefulWidget {
   final ChatServerAppConfig serverAppConfig;
   final ValueChanged<ChatConversation> onOpenChat;
   final Future<void> Function(UiContact contact) onOpenContactChat;
+  final Future<bool> Function(String groupNo) onOpenGroupChat;
 
   @override
   State<GlobalSearchPage> createState() => GlobalSearchPageState();
@@ -911,16 +914,13 @@ class GlobalSearchPageState extends State<GlobalSearchPage> {
                 for (var i = 0; i < groups.length; i++) ...[
                   GroupTile(
                     group: groups[i],
-                    onTap: () => pushPage(
-                      context,
-                      GroupDetailPage(
-                        group: groups[i],
-                        contacts: widget.contacts,
-                        socialGateway: widget.socialGateway,
-                        config: widget.config,
-                        serverAppConfig: widget.serverAppConfig,
-                      ),
-                    ),
+                    // 对齐 contact / message 结果: 直接进群聊会话页, 不再
+                    // 经过半成品的 GroupDetailPage. pop 掉搜索页后由
+                    // home_shell._openGroupChat 解析 groupNo → 打开 ChatScreen.
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      unawaited(widget.onOpenGroupChat(groups[i].groupNo));
+                    },
                   ),
                   if (i != groups.length - 1) const MoyuDivider(),
                 ],

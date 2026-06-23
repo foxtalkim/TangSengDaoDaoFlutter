@@ -1245,6 +1245,7 @@ class _HomeShellState extends State<HomeShell> {
           serverAppConfig: widget.serverAppConfig,
           onOpenChat: _openChat,
           onOpenContactChat: _openContactChat,
+          onOpenGroupChat: _openGroupChat,
         ),
       ),
     );

@@ -81,7 +81,7 @@ abstract interface class ChatImGateway {
   /// 当前 app session 的全局单例 — _HomeShellState initState 时 set,
   /// dispose 清. 跟 UserSession.current / MomentMsgService.current 同模式,
   /// 给那些没法走 widget tree 透传 imGateway 的入口用 (例如 group_pages
-  /// 内 _GroupManagePage 跨 _GroupListPage → _GroupDetailPage 两层 thread
+  /// 内 GroupManagePage 跨 GroupListPage / chat_settings 多层 thread
   /// 麻烦). 1 个 app session 只有 1 个 IM gateway, 单例语义本来就成立.
   static ChatImGateway? current;
 
