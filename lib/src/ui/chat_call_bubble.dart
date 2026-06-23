@@ -5,9 +5,9 @@ import '../l10n/app_localizations.dart';
 import '../settings/bubble_radius_controller.dart';
 import '../settings/bubble_radius_store.dart';
 import 'chat_message_status_widgets.dart';
+import 'chat_peer_frame.dart';
 import 'moyu_ink.dart';
 import 'moyu_theme.dart';
-import 'moyu_widgets.dart';
 
 /// RTC call bubble (9989-9999). Looks like a regular bubble but with a
 /// phone icon prefix and the call status / duration text. Aligns left for
@@ -90,43 +90,6 @@ class CallBubble extends StatelessWidget {
       ),
     );
 
-    final avatarSlot = Visibility(
-      visible: showAvatar,
-      maintainSize: true,
-      maintainAnimation: true,
-      maintainState: true,
-      child: MoyuResolvedAvatar.raw(
-        label: avatarLabel,
-        size: 32,
-        colors: avatarColors,
-        online: false,
-        imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
-      ),
-    );
-
-    final hasGroupName = !isMine && senderName.isNotEmpty;
-    Widget bubbleColumn = bubble;
-    if (hasGroupName) {
-      bubbleColumn = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 4),
-            child: Text(
-              senderName,
-              style: TextStyle(
-                fontSize: 14,
-                color: MoyuColors.of(context).textTertiary,
-              ),
-            ),
-          ),
-          bubble,
-        ],
-      );
-    }
-
-    final avatarTopShift = hasGroupName ? 22.0 : 0.0;
     Widget? leadingStatus;
     if (isMine) {
       if (status == '发送失败') {
@@ -156,37 +119,32 @@ class CallBubble extends StatelessWidget {
       onLongPressStart: onLongPressAt == null
           ? null
           : (d) => onLongPressAt!(d.globalPosition),
-      child: bubbleColumn,
+      child: bubble,
     );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: hasGroupName
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.center,
-        children: isMine
-            ? [
+      child: isMine
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 if (leadingStatus != null) ...[
                   leadingStatus,
                   const SizedBox(width: 6),
                 ],
                 interactiveBubble,
-              ]
-            : [
-                if (hasAvatarSlot)
-                  avatarTopShift > 0
-                      ? Padding(
-                          padding: EdgeInsets.only(top: avatarTopShift),
-                          child: avatarSlot,
-                        )
-                      : avatarSlot,
-                interactiveBubble,
               ],
-      ),
+            )
+          : MoyuPeerBubbleFrame(
+              bubble: interactiveBubble,
+              hasAvatarSlot: hasAvatarSlot,
+              showAvatar: showAvatar,
+              avatarUrl: avatarUrl,
+              avatarLabel: avatarLabel,
+              avatarColors: avatarColors,
+              senderName: senderName,
+            ),
     );
   }
 }

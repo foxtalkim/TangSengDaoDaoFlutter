@@ -4,6 +4,7 @@ import '../config/app_config.dart';
 import '../im/wukong_im_service.dart' show MergeForwardEntry;
 import '../l10n/app_localizations.dart';
 import 'chat_message_status_widgets.dart';
+import 'chat_peer_frame.dart';
 import 'moyu_ink.dart';
 import 'moyu_theme.dart';
 import 'moyu_widgets.dart';
@@ -141,11 +142,23 @@ class MergeForwardBubble extends StatelessWidget {
     this.onReceiptTap,
     this.onRetry,
     this.onDelete,
+    this.hasAvatarSlot = false,
+    this.showAvatar = false,
+    this.avatarUrl = '',
+    this.avatarLabel = '',
+    this.avatarColors = const [],
+    this.senderName = '',
   });
 
   final bool isMine;
   final String title;
   final List<MergeForwardEntry> entries;
+  final bool hasAvatarSlot;
+  final bool showAvatar;
+  final String avatarUrl;
+  final String avatarLabel;
+  final List<Color> avatarColors;
+  final String senderName;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final void Function(Offset globalPosition)? onLongPressAt;
@@ -259,18 +272,29 @@ class MergeForwardBubble extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: [
-          if (leadingStatus != null) ...[
-            leadingStatus,
-            const SizedBox(width: 6),
-          ],
-          interactiveBubble,
-        ],
-      ),
+      child: !isMine && hasAvatarSlot
+          ? MoyuPeerBubbleFrame(
+              bubble: interactiveBubble,
+              hasAvatarSlot: true,
+              showAvatar: showAvatar,
+              avatarUrl: avatarUrl,
+              avatarLabel: avatarLabel,
+              avatarColors: avatarColors,
+              senderName: senderName,
+            )
+          : Row(
+              mainAxisAlignment: isMine
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (leadingStatus != null) ...[
+                  leadingStatus,
+                  const SizedBox(width: 6),
+                ],
+                interactiveBubble,
+              ],
+            ),
     );
   }
 }

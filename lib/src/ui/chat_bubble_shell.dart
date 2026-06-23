@@ -13,12 +13,12 @@ import 'chat_image_bubble.dart';
 import 'chat_inline_text.dart';
 import 'chat_message_status_widgets.dart';
 import 'chat_module_bubble.dart';
+import 'chat_peer_frame.dart';
 import 'chat_reactions.dart';
 import 'chat_typing_bottom_bubble.dart';
 import 'chat_voice_bubble.dart';
 import 'moyu_ink.dart';
 import 'moyu_theme.dart';
-import 'moyu_widgets.dart';
 
 class Bubble extends StatelessWidget {
   const Bubble.left({
@@ -686,68 +686,17 @@ class Bubble extends StatelessWidget {
         ? null
         : Padding(padding: const EdgeInsets.only(top: 3), child: belowMetaRow);
 
-    final avatarSlot = Visibility(
-      visible: showAvatar,
-      maintainSize: true,
-      maintainAnimation: true,
-      maintainState: true,
-      child: MoyuResolvedAvatar.raw(
-        label: avatarLabel,
-        size: 32,
-        colors: colors,
-        online: false,
-        imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
-      ),
-    );
-
-    // 气泡 + 下方 meta 包一层 Column(crossAxis: end): 让 belowMeta 右对齐到
-    // "气泡右缘" (Column 宽=气泡宽, 因气泡比 meta 宽)。reactionStrip/addon 等
-    // 留在外层 Column(start) 跟气泡左缘对齐, 不进这层。
-    final bubbleWithMeta = belowMeta == null
-        ? interactiveCore
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    // 气泡本体 (含 reaction / addon / tip, 但**不含** belowMeta) — 头像底部
+    // 对齐它。belowMeta (图片/语音/视频/贴纸等下方的时间行) 走
+    // MoyuPeerBubbleFrame 的 footer, 渲染在气泡下方, 不把头像往下拉。
+    final bubbleContent =
+        showTip || reactionStrip != null || addon != null
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [interactiveCore, belowMeta],
-          );
-    final bubble = Flexible(
-      child:
-          showTip || reactionStrip != null || addon != null || belowMeta != null
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [bubbleWithMeta, ?addon, ?reactionStrip, ?sensitiveTip],
-            )
-          : interactiveCore,
-    );
-
-    // 群聊发送者名字: 对齐 iOS WKMessageCell.m:220-223 + L914.
-    //   字号 14 (WK_NICKNAME_FONT = appFontOfSize:14)
-    //   颜色 WKUserColorUtil.userColor (per-user 多色, 跟头像渐变首色一致)
-    //   left = bubble 视觉左缘 (跟 bubble margin 8pt 对齐, 旧版偏右 2pt)
-    //   bottom 4pt 间距, 跟 nameLbl.lim_top = -height-4 同步.
-    final hasGroupName = !isMine && senderName.isNotEmpty;
-    Widget bubbleColumn = bubble;
-    if (hasGroupName) {
-      bubbleColumn = Flexible(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 8, bottom: 4),
-              child: Text(
-                senderName,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: MoyuColors.of(context).textTertiary,
-                ),
-              ),
-            ),
-            Row(mainAxisSize: MainAxisSize.min, children: [bubble]),
-          ],
-        ),
-      );
-    }
+            children: [interactiveCore, ?addon, ?reactionStrip, ?sensitiveTip],
+          )
+        : interactiveCore;
 
     // 发送中 / 发送失败 是瞬时发送状态, 仍渲染在气泡左侧 (spinner / 红叹号
     // 可点重试). 已读回执 (✓✓) 已挪进气泡末尾 meta 行 (TG 风), 不再走
@@ -805,32 +754,26 @@ class Bubble extends StatelessWidget {
           : interactiveCore,
     );
 
-    // 群聊 + 有 senderName 时 column = [name(~22pt), bubble], 不能 center
-    // 否则 avatar 跟 (name+bubble) 整体中线齐 → 视觉偏低. 改 start 让
-    // avatar 跟 column top (= name 顶) 齐, 再给 avatar 加 top padding 把
-    // 它推到 bubble 顶位置, 对齐 iOS WKMessageCell avatar.lim_top 跟
-    // bubble.lim_top 共享同一行.
-    final avatarTopShift = hasGroupName ? 22.0 : 0.0;
-    final row = Row(
-      mainAxisAlignment: isMine
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
-      crossAxisAlignment: hasGroupName
-          ? CrossAxisAlignment.start
-          : CrossAxisAlignment.center,
-      children: isMine
-          ? [outgoingBubble]
-          : [
-              if (hasAvatarSlot)
-                avatarTopShift > 0
-                    ? Padding(
-                        padding: EdgeInsets.only(top: avatarTopShift),
-                        child: avatarSlot,
-                      )
-                    : avatarSlot,
-              bubbleColumn,
-            ],
-    );
+    // 群聊对方消息: 头像 + 名字 + 气泡的左侧布局收口到 MoyuPeerBubbleFrame
+    // (头像底部对齐气泡 + 名字 12pt + invisible 占位), 对齐 iOS WKMessageCell
+    // avatar.lim_top = bubble.lim_bottom - avatar.height + Telegram。
+    // 自己消息保持右对齐, 无头像槽。
+    final row = isMine
+        ? Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [outgoingBubble],
+          )
+        : MoyuPeerBubbleFrame(
+            bubble: bubbleContent,
+            footer: belowMeta,
+            hasAvatarSlot: hasAvatarSlot,
+            showAvatar: showAvatar,
+            avatarUrl: avatarUrl,
+            avatarLabel: avatarLabel,
+            avatarColors: colors,
+            senderName: senderName,
+          );
 
     final hasFlame = flameSecond > 0;
     final rowWithFlame = hasFlame

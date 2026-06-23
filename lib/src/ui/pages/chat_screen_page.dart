@@ -64,6 +64,7 @@ import '../chat_message_state_widgets.dart';
 import '../chat_message_status_widgets.dart';
 import '../chat_more_panel.dart';
 import '../chat_navigation.dart';
+import '../chat_peer_frame.dart';
 import '../chat_reply_preview.dart';
 import '../chat_rich_message_bubbles.dart';
 import '../chat_selection_widgets.dart';
@@ -5480,6 +5481,48 @@ class ChatScreenState extends State<ChatScreen> {
     return MoyuAvatarGradients.at(hash);
   }
 
+  /// 群聊对方消息的头像 / 名字参数, 给独立 bubble widget (位置 / 合并转发 /
+  /// 未知) 传入 MoyuPeerBubbleFrame。streak 末条显头像、首条显名字; 1v1 或
+  /// 自己消息返回空槽 (hasAvatarSlot=false)。i 是 _messages 索引。
+  ({
+    bool hasAvatarSlot,
+    bool showAvatar,
+    String avatarUrl,
+    String avatarLabel,
+    List<Color> avatarColors,
+    String senderName,
+  })
+  _peerBubbleArgs(ChatMessage message, int i) {
+    if (!_isGroupChat || message.isMine) {
+      return (
+        hasAvatarSlot: false,
+        showAvatar: false,
+        avatarUrl: '',
+        avatarLabel: '',
+        avatarColors: const <Color>[],
+        senderName: '',
+      );
+    }
+    final isStreakStart = !isSameLeftMessageStreak(
+      _messages,
+      i,
+      previousVisibleMessageIndex(_messages, i),
+    );
+    final isStreakEnd = !isSameLeftMessageStreak(
+      _messages,
+      i,
+      nextVisibleMessageIndex(_messages, i),
+    );
+    return (
+      hasAvatarSlot: true,
+      showAvatar: isStreakEnd,
+      avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
+      avatarLabel: _bubbleSenderLabel(message, widget.conversation),
+      avatarColors: _bubbleSenderColors(message, widget.conversation),
+      senderName: isStreakStart ? _senderName(message) : '',
+    );
+  }
+
   /// True for messages whose content type isn't recognized by this
   /// client build — typically a newer message format the server has
   /// rolled out before this version was released. Mirrors native iOS
@@ -7074,6 +7117,7 @@ class ChatScreenState extends State<ChatScreen> {
 
       if (message.isMergeForwardMessage) {
         final isMs = _isMultiSelect && _canMultiSelect(message);
+        final pa = _peerBubbleArgs(message, i);
         rows.add(
           _wrapForMultiSelect(
             message,
@@ -7102,6 +7146,12 @@ class ChatScreenState extends State<ChatScreen> {
               onDelete: message.status == '发送失败'
                   ? () => setState(() => _messages.remove(message))
                   : null,
+              hasAvatarSlot: pa.hasAvatarSlot,
+              showAvatar: pa.showAvatar,
+              avatarUrl: pa.avatarUrl,
+              avatarLabel: pa.avatarLabel,
+              avatarColors: pa.avatarColors,
+              senderName: pa.senderName,
             ),
           ),
         );
@@ -7134,12 +7184,19 @@ class ChatScreenState extends State<ChatScreen> {
       }
 
       if (shouldRenderModuleContentFallback(message, widget.runtime)) {
+        final pa = _peerBubbleArgs(message, i);
         rows.add(
           _wrapForMultiSelect(
             message,
             UnknownContentRow(
               isMine: message.isMine,
               text: AppLocalizations.of(context).moduleUnsupported,
+              hasAvatarSlot: pa.hasAvatarSlot,
+              showAvatar: pa.showAvatar,
+              avatarUrl: pa.avatarUrl,
+              avatarLabel: pa.avatarLabel,
+              avatarColors: pa.avatarColors,
+              senderName: pa.senderName,
             ),
           ),
         );
@@ -7148,6 +7205,7 @@ class ChatScreenState extends State<ChatScreen> {
 
       if (message.isLocationMessage) {
         final isMs = _isMultiSelect && _canMultiSelect(message);
+        final pa = _peerBubbleArgs(message, i);
         rows.add(
           _wrapForMultiSelect(
             message,
@@ -7176,6 +7234,12 @@ class ChatScreenState extends State<ChatScreen> {
               onDelete: message.status == '发送失败'
                   ? () => setState(() => _messages.remove(message))
                   : null,
+              hasAvatarSlot: pa.hasAvatarSlot,
+              showAvatar: pa.showAvatar,
+              avatarUrl: pa.avatarUrl,
+              avatarLabel: pa.avatarLabel,
+              avatarColors: pa.avatarColors,
+              senderName: pa.senderName,
             ),
           ),
         );
@@ -7214,84 +7278,50 @@ class ChatScreenState extends State<ChatScreen> {
               ? null
               : (pos) => _showMessageActionsAt(message, pos),
         );
-        // bubbleColumn: 群聊 peer 模式有 senderName 时, name 在卡片上方
-        // 4pt 间距; 否则就是裸卡片.
-        Widget cardColumn = card;
-        if (senderName.isNotEmpty) {
-          cardColumn = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 8, bottom: 4),
-                child: Text(
-                  senderName,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: MoyuColors.of(context).textTertiary,
-                  ),
-                ),
-              ),
-              card,
-            ],
-          );
-        }
-        // 群聊 peer cell 左侧头像槽位 (跟 Bubble.left 同 32×32, 走
-        // _bubbleSenderAvatar / _bubbleSenderColors). isStreakEnd 才显示
-        // 真头像, 其他位置 invisible 占位保对齐.
-        final avatarSlot = !_isGroupChat || message.isMine
-            ? const SizedBox.shrink()
-            : Visibility(
-                visible: showAvatar,
-                maintainSize: true,
-                maintainAnimation: true,
-                maintainState: true,
-                child: MoyuResolvedAvatar.raw(
-                  label: _bubbleSenderLabel(message, widget.conversation),
-                  size: 32,
-                  colors: _bubbleSenderColors(message, widget.conversation),
-                  imageUrl: _bubbleSenderAvatar(message, widget.conversation),
-                ),
-              );
+        // 名片头像 + 名字 + 底部对齐布局收口到 MoyuPeerBubbleFrame
+        // (跟文本/图片气泡同款), 不再外包手写 avatarSlot + Row。
         final cellRow = Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            mainAxisAlignment: message.isMine
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
-            crossAxisAlignment: senderName.isNotEmpty
-                ? CrossAxisAlignment.start
-                : CrossAxisAlignment.center,
-            children: message.isMine
-                ? [
+          child: message.isMine
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     if (leadingStatus != null) ...[
                       leadingStatus,
                       const SizedBox(width: 6),
                     ],
-                    cardColumn,
-                  ]
-                : [
-                    if (_isGroupChat) ...[
-                      senderName.isNotEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 22),
-                              child: avatarSlot,
-                            )
-                          : avatarSlot,
-                      const SizedBox(width: 8),
-                    ],
-                    cardColumn,
+                    card,
                   ],
-          ),
+                )
+              : MoyuPeerBubbleFrame(
+                  bubble: card,
+                  hasAvatarSlot: _isGroupChat,
+                  showAvatar: showAvatar,
+                  avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
+                  avatarLabel: _bubbleSenderLabel(message, widget.conversation),
+                  avatarColors: _bubbleSenderColors(message, widget.conversation),
+                  senderName: senderName,
+                ),
         );
         rows.add(_wrapForMultiSelect(message, cellRow));
         continue;
       }
 
       if (_isUnknownContent(message)) {
+        final pa = _peerBubbleArgs(message, i);
         rows.add(
           _wrapForMultiSelect(
             message,
-            UnknownContentRow(isMine: message.isMine),
+            UnknownContentRow(
+              isMine: message.isMine,
+              hasAvatarSlot: pa.hasAvatarSlot,
+              showAvatar: pa.showAvatar,
+              avatarUrl: pa.avatarUrl,
+              avatarLabel: pa.avatarLabel,
+              avatarColors: pa.avatarColors,
+              senderName: pa.senderName,
+            ),
           ),
         );
         continue;

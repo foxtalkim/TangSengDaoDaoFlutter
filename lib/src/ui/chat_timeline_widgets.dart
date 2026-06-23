@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import '../l10n/app_localizations.dart';
+import 'chat_peer_frame.dart';
 import 'moyu_theme.dart';
 
 /// Compact "已读 / 未读" count tile inside the readers-summary bottom sheet.
@@ -134,46 +135,69 @@ class UnreadHistoryDivider extends StatelessWidget {
 
 /// Placeholder bubble for unsupported server content types.
 class UnknownContentRow extends StatelessWidget {
-  const UnknownContentRow({super.key, required this.isMine, this.text});
+  const UnknownContentRow({
+    super.key,
+    required this.isMine,
+    this.text,
+    this.hasAvatarSlot = false,
+    this.showAvatar = false,
+    this.avatarUrl = '',
+    this.avatarLabel = '',
+    this.avatarColors = const [],
+    this.senderName = '',
+  });
 
   final bool isMine;
   final String? text;
+  final bool hasAvatarSlot;
+  final bool showAvatar;
+  final String avatarUrl;
+  final String avatarLabel;
+  final List<Color> avatarColors;
+  final String senderName;
 
   @override
   Widget build(BuildContext context) {
+    final box = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width - 120,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: MoyuColors.of(context).backgroundSoft,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: MoyuColors.of(context).line, width: 0.5),
+        ),
+        child: Text(
+          text ?? AppLocalizations.of(context).chatUnknownContentFallback,
+          style: TextStyle(
+            fontSize: 12,
+            color: MoyuColors.of(context).textTertiary,
+            height: 1.4,
+          ),
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width - 120,
+      child: !isMine && hasAvatarSlot
+          ? MoyuPeerBubbleFrame(
+              bubble: box,
+              hasAvatarSlot: true,
+              showAvatar: showAvatar,
+              avatarUrl: avatarUrl,
+              avatarLabel: avatarLabel,
+              avatarColors: avatarColors,
+              senderName: senderName,
+            )
+          : Row(
+              mainAxisAlignment: isMine
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [box],
             ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: MoyuColors.of(context).backgroundSoft,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: MoyuColors.of(context).line,
-                  width: 0.5,
-                ),
-              ),
-              child: Text(
-                text ?? AppLocalizations.of(context).chatUnknownContentFallback,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: MoyuColors.of(context).textTertiary,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

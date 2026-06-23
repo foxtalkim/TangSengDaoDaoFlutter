@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../settings/bubble_radius_controller.dart';
 import '../settings/bubble_radius_store.dart';
 import 'chat_message_status_widgets.dart';
+import 'chat_peer_frame.dart';
 import 'moyu_ink.dart';
 import 'moyu_theme.dart';
 
@@ -31,6 +32,12 @@ class LocationBubble extends StatelessWidget {
     this.onReceiptTap,
     this.onRetry,
     this.onDelete,
+    this.hasAvatarSlot = false,
+    this.showAvatar = false,
+    this.avatarUrl = '',
+    this.avatarLabel = '',
+    this.avatarColors = const [],
+    this.senderName = '',
   });
 
   final bool isMine;
@@ -38,6 +45,12 @@ class LocationBubble extends StatelessWidget {
   final String address;
   final double latitude;
   final double longitude;
+  final bool hasAvatarSlot;
+  final bool showAvatar;
+  final String avatarUrl;
+  final String avatarLabel;
+  final List<Color> avatarColors;
+  final String senderName;
 
   /// 服务端 mini-map 截图 URL. 非空时 preview 区域用 CachedNetworkImage 渲染,
   /// 空时显占位.
@@ -77,50 +90,57 @@ class LocationBubble extends StatelessWidget {
       }
     }
 
+    final bubbleBox = GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPressAt == null ? onLongPress : null,
+      onLongPressStart: onLongPressAt == null
+          ? null
+          : (d) => onLongPressAt!(d.globalPosition),
+      behavior: HitTestBehavior.opaque,
+      child: ClipRRect(
+        borderRadius: _locationBubbleBorderRadius(context, isMine: isMine),
+        child: Container(
+          width: 240,
+          decoration: BoxDecoration(
+            color: isMine ? null : MoyuColors.of(context).bubbleReceiveBg,
+            gradient: isMine ? MoyuInk.bubbleSendGradientOf(context) : null,
+          ),
+          child: LocationBubbleContent(
+            title: title,
+            address: address,
+            latitude: latitude,
+            longitude: longitude,
+            imageUrl: imageUrl,
+            isMine: isMine,
+          ),
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isMine
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: [
-          if (leadingStatus != null) ...[
-            leadingStatus,
-            const SizedBox(width: 6),
-          ],
-          GestureDetector(
-            onTap: onTap,
-            onLongPress: onLongPressAt == null ? onLongPress : null,
-            onLongPressStart: onLongPressAt == null
-                ? null
-                : (d) => onLongPressAt!(d.globalPosition),
-            behavior: HitTestBehavior.opaque,
-            child: ClipRRect(
-              borderRadius: _locationBubbleBorderRadius(
-                context,
-                isMine: isMine,
-              ),
-              child: Container(
-                width: 240,
-                decoration: BoxDecoration(
-                  color: isMine ? null : MoyuColors.of(context).bubbleReceiveBg,
-                  gradient: isMine
-                      ? MoyuInk.bubbleSendGradientOf(context)
-                      : null,
-                ),
-                child: LocationBubbleContent(
-                  title: title,
-                  address: address,
-                  latitude: latitude,
-                  longitude: longitude,
-                  imageUrl: imageUrl,
-                  isMine: isMine,
-                ),
-              ),
+      child: !isMine && hasAvatarSlot
+          ? MoyuPeerBubbleFrame(
+              bubble: bubbleBox,
+              hasAvatarSlot: true,
+              showAvatar: showAvatar,
+              avatarUrl: avatarUrl,
+              avatarLabel: avatarLabel,
+              avatarColors: avatarColors,
+              senderName: senderName,
+            )
+          : Row(
+              mainAxisAlignment: isMine
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (leadingStatus != null) ...[
+                  leadingStatus,
+                  const SizedBox(width: 6),
+                ],
+                bubbleBox,
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
