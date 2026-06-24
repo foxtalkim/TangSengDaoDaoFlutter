@@ -2870,8 +2870,15 @@ class ChatScreenState extends State<ChatScreen> {
         .whereType<Color>()
         .toList();
     if (_chatBackground.url.isEmpty) {
-      // 默认 / 未选背景: 纯色 (跟随主题 light/dark backgroundSoft)。
-      return BoxDecoration(color: MoyuColors.of(context).backgroundSoft);
+      // 默认 / 未选背景: 纯色。light 比 backgroundSoft(#F6F6F7) 再灰一档
+      // (#EAEAEC), 让白气泡浮起更明显 (用户要求「再灰一点」); dark 保持
+      // backgroundSoft。不直接调 backgroundSoft — 那个还用于对方气泡 / 设置
+      // 卡片 / pinned row。
+      return BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? MoyuColors.of(context).backgroundSoft
+            : const Color(0xFFEAEAEC),
+      );
     }
     if (_chatBackground.isSvg && colors.length >= 2) {
       return BoxDecoration(
