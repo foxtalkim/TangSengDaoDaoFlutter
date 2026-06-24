@@ -26,9 +26,11 @@ bool _isHiddenTimelineMessage(ChatMessage message) {
   return message.isHiddenRtcSignalingFrame || message.isEmptyInboundTextMessage;
 }
 
-/// True when both indices point to non-mine, non-system messages from the same
-/// sender on the same calendar day and within the same five-minute visual
-/// streak window.
+/// True when both indices point to non-mine, non-system, non-revoked messages
+/// from the same sender on the same calendar day and within the same
+/// five-minute visual streak window. Revoked / system / call / hidden frames
+/// break the streak via [_breaksLeftMessageStreak], so the bubble before a
+/// revoke regains its avatar.
 bool isSameLeftMessageStreak(
   List<ChatMessage> messages,
   int aIndex,
@@ -62,6 +64,7 @@ bool _breaksLeftMessageStreak(ChatMessage message) =>
     message.isSystemMessage ||
     message.isCallMessage ||
     message.isGroupInviteApproval ||
+    message.revoked ||
     _isHiddenTimelineMessage(message);
 
 bool shouldInsertChatDateStamp(int? previousTimestamp, int currentTimestamp) {
