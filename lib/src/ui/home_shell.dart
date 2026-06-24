@@ -1505,6 +1505,9 @@ class _HomeShellState extends State<HomeShell> {
             contacts: _contacts,
             socialGateway: widget.socialGateway,
             config: widget.config,
+            // 朋友圈/发现页点头像进名片页, "发消息" 要能真打开会话, 不是只弹
+            // "去通讯录" toast。透传 home_shell 的会话调度 hook。
+            onOpenChat: _openContactChat,
           ),
         ),
         ProfilePage(

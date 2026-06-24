@@ -1014,6 +1014,7 @@ void openUserCardByUid(
   ChatSocialGateway? socialGateway,
   ChatCallGateway? callGateway,
   AppConfig? config,
+  Future<void> Function(UiContact contact)? onOpenChat,
 }) {
   if (uid.isEmpty) return;
   UiContact? matched;
@@ -1057,15 +1058,19 @@ void openUserCardByUid(
         socialGateway: socialGateway,
         config: config,
         isStranger: isStranger,
-        onOpenChat: (_) async {
-          // 朋友圈 / 通知 cell 不是会话调度环上下文, 没有 _openChat hook.
-          // 提示用户去通讯录页打开真会话. 跟 home_shell:5189 同模式.
-          if (!context.mounted) return;
-          MoyuToast.show(
-            context,
-            AppLocalizations.of(context).contactOpenFromContacts(target.name),
-          );
-        },
+        // 调用方传了真 onOpenChat hook (home_shell._openContactChat) 时, 名片页
+        // "发消息" 直接打开会话; 没传的老入口 fallback 提示去通讯录 (向后兼容)。
+        onOpenChat:
+            onOpenChat ??
+            (_) async {
+              if (!context.mounted) return;
+              MoyuToast.show(
+                context,
+                AppLocalizations.of(
+                  context,
+                ).contactOpenFromContacts(target.name),
+              );
+            },
       ),
     ),
   );
@@ -1263,6 +1268,8 @@ class ContactDetailPageState extends State<ContactDetailPage> {
                 socialGateway: widget.socialGateway,
                 callGateway: widget.callGateway,
                 config: widget.config,
+                // 名片页内再点头像进另一名片页时, 透传 onOpenChat 让 "发消息" 可用。
+                onOpenChat: widget.onOpenChat,
               );
             },
           },
