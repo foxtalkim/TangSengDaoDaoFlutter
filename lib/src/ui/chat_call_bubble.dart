@@ -33,6 +33,7 @@ class CallBubble extends StatelessWidget {
     this.onReceiptTap,
     this.onRetry,
     this.onDelete,
+    this.timeText = '',
   });
 
   final ChatMessage message;
@@ -60,6 +61,7 @@ class CallBubble extends StatelessWidget {
   final VoidCallback? onReceiptTap;
   final VoidCallback? onRetry;
   final VoidCallback? onDelete;
+  final String timeText;
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +88,15 @@ class CallBubble extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Icon(icon, size: 14, color: fg),
+          // 通话气泡一行小, time 走 inline (跟在图标后), 不叠 overlay 压图标。
+          // 弱化色, 对齐文本气泡 inline time + Telegram 通话记录。
+          if (timeText.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text(
+              timeText,
+              style: TextStyle(fontSize: 11, color: fg.withValues(alpha: 0.6)),
+            ),
+          ],
         ],
       ),
     );

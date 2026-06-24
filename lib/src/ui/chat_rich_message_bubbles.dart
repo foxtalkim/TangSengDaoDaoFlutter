@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/app_config.dart';
 import '../im/wukong_im_service.dart' show MergeForwardEntry;
 import '../l10n/app_localizations.dart';
+import 'chat_media_time_chip.dart';
 import 'chat_message_status_widgets.dart';
 import 'chat_peer_frame.dart';
 import 'moyu_ink.dart';
@@ -19,6 +20,7 @@ class CardBubble extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.onLongPressAt,
+    this.timeText = '',
   });
 
   final bool isMine;
@@ -28,6 +30,7 @@ class CardBubble extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final void Function(Offset globalPosition)? onLongPressAt;
+  final String timeText;
 
   static const double _cardWidth = 240;
   static const double _topHeight = 68;
@@ -37,7 +40,7 @@ class CardBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final avatarUrl = AvatarResolver.user(config: config, uid: uid);
-    return GestureDetector(
+    final card = GestureDetector(
       onTap: onTap,
       onLongPress: onLongPressAt == null ? onLongPress : null,
       onLongPressStart: onLongPressAt == null
@@ -123,6 +126,18 @@ class CardBubble extends StatelessWidget {
         ),
       ),
     );
+    // 时间 overlay 浮在名片卡片右下角 (半透明黑胶囊白字), 对齐图片消息 + TG。
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        card,
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: MediaTimeChip(timeText: timeText),
+        ),
+      ],
+    );
   }
 }
 
@@ -148,6 +163,7 @@ class MergeForwardBubble extends StatelessWidget {
     this.avatarLabel = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.timeText = '',
   });
 
   final bool isMine;
@@ -159,6 +175,7 @@ class MergeForwardBubble extends StatelessWidget {
   final String avatarLabel;
   final List<Color> avatarColors;
   final String senderName;
+  final String timeText;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final void Function(Offset globalPosition)? onLongPressAt;
@@ -270,11 +287,24 @@ class MergeForwardBubble extends StatelessWidget {
       child: bubble,
     );
 
+    // 时间 overlay 浮在合并转发卡片右下角 (半透明黑胶囊白字), 对齐图片消息 + TG。
+    final bubbleWithTime = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        interactiveBubble,
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: MediaTimeChip(timeText: timeText),
+        ),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: !isMine && hasAvatarSlot
           ? MoyuPeerBubbleFrame(
-              bubble: interactiveBubble,
+              bubble: bubbleWithTime,
               hasAvatarSlot: true,
               showAvatar: showAvatar,
               avatarUrl: avatarUrl,
@@ -292,7 +322,7 @@ class MergeForwardBubble extends StatelessWidget {
                   leadingStatus,
                   const SizedBox(width: 6),
                 ],
-                interactiveBubble,
+                bubbleWithTime,
               ],
             ),
     );

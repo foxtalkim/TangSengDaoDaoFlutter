@@ -7109,6 +7109,7 @@ class ChatScreenState extends State<ChatScreen> {
               onDelete: message.status == '发送失败'
                   ? () => setState(() => _messages.remove(message))
                   : null,
+              timeText: formatChatClock(message.timestamp),
             ),
           ),
         );
@@ -7152,6 +7153,7 @@ class ChatScreenState extends State<ChatScreen> {
               avatarLabel: pa.avatarLabel,
               avatarColors: pa.avatarColors,
               senderName: pa.senderName,
+              timeText: formatChatClock(message.timestamp),
             ),
           ),
         );
@@ -7240,6 +7242,7 @@ class ChatScreenState extends State<ChatScreen> {
               avatarLabel: pa.avatarLabel,
               avatarColors: pa.avatarColors,
               senderName: pa.senderName,
+              timeText: formatChatClock(message.timestamp),
             ),
           ),
         );
@@ -7277,6 +7280,7 @@ class ChatScreenState extends State<ChatScreen> {
           onLongPressAt: isMs
               ? null
               : (pos) => _showMessageActionsAt(message, pos),
+          timeText: formatChatClock(message.timestamp),
         );
         // 名片头像 + 名字 + 底部对齐布局收口到 MoyuPeerBubbleFrame
         // (跟文本/图片气泡同款), 不再外包手写 avatarSlot + Row。

@@ -387,6 +387,23 @@ class Bubble extends StatelessWidget {
       clockColor: belowClockColor,
       inside: false,
     );
+
+    // 非文本气泡 (图片/视频/贴纸/语音/文件) 的 time+回执 overlay — 半透明黑
+    // 胶囊 + 白字, 浮在气泡/媒体右下角。对齐 iOS WKImageMessageCell
+    // bringSubviewToFront(trailingView) + Telegram。替代原「气泡下方一行」,
+    // 修非文本时间「抽象」。图片/视频/贴纸叠在媒体上, 语音/文件叠在气泡内右下。
+    final mediaMetaOverlay = (!isText && showMeta)
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.38),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: buildMetaRow(clockColor: Colors.white, inside: true),
+            ),
+          )
+        : null;
     // 文本气泡 maxWidth 对齐 iOS WKAppConfig.m:62:
     //   原版是 screenW - 120；当前实现提升到约 80%，按常见手机宽度取 screenW - 80.
     // 大屏自动撑开 (iPhone 17 Pro Max 350, iPad 680+), 小屏退到 ~295.
@@ -628,7 +645,20 @@ class Bubble extends StatelessWidget {
           onLongPressStart: onLongPressAt == null
               ? null
               : (d) => onLongPressAt!(d.globalPosition),
-          child: bubbleBox,
+          // isImage: time+回执 overlay 浮在媒体右下角 (mediaMetaOverlay);
+          // 其余类型 bubbleBox 原样 (时间走气泡内 / 下方)。
+          child: mediaMetaOverlay == null
+              ? bubbleBox
+              : Stack(
+                  children: [
+                    bubbleBox,
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: mediaMetaOverlay,
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -678,11 +708,11 @@ class Bubble extends StatelessWidget {
     // (气泡比 meta 宽 → Column 宽=气泡宽 → meta 贴气泡右缘)。不能用 Align
     // centerRight, 否则会撑到屏幕最右 — 对方气泡靠左时时间就飘出气泡了。纯文本
     // 的 meta 已 overlay 在气泡内右下角, 这里不重复。
-    final sideMeta =
-        !isText && isMine && hasReceipt && !hasClock && !hasReplyCount
-        ? belowMetaRow
-        : null;
-    final belowMeta = (isText || belowMetaRow == null || sideMeta != null)
+    // 所有非文本 (图片/视频/贴纸/语音/文件) 的 meta 改走右下 overlay
+    // (mediaMetaOverlay), 不再走 sideMeta / belowMeta「下方一行」。
+    const sideMeta = null;
+    final belowMeta =
+        (mediaMetaOverlay != null || isText || belowMetaRow == null)
         ? null
         : Padding(padding: const EdgeInsets.only(top: 3), child: belowMetaRow);
 

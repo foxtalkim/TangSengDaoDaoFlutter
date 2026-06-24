@@ -5,6 +5,7 @@ import 'package:forui/forui.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/bubble_radius_controller.dart';
 import '../settings/bubble_radius_store.dart';
+import 'chat_media_time_chip.dart';
 import 'chat_message_status_widgets.dart';
 import 'chat_peer_frame.dart';
 import 'moyu_ink.dart';
@@ -38,6 +39,7 @@ class LocationBubble extends StatelessWidget {
     this.avatarLabel = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.timeText = '',
   });
 
   final bool isMine;
@@ -51,6 +53,7 @@ class LocationBubble extends StatelessWidget {
   final String avatarLabel;
   final List<Color> avatarColors;
   final String senderName;
+  final String timeText;
 
   /// 服务端 mini-map 截图 URL. 非空时 preview 区域用 CachedNetworkImage 渲染,
   /// 空时显占位.
@@ -116,11 +119,24 @@ class LocationBubble extends StatelessWidget {
         ),
       ),
     );
+    // 时间 overlay 浮在卡片右下角 (半透明黑胶囊白字), 对齐图片/视频消息 +
+    // Telegram。回执仍走 leadingStatus (isMine 卡片左侧)。
+    final bubbleWithTime = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        bubbleBox,
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: MediaTimeChip(timeText: timeText),
+        ),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: !isMine && hasAvatarSlot
           ? MoyuPeerBubbleFrame(
-              bubble: bubbleBox,
+              bubble: bubbleWithTime,
               hasAvatarSlot: true,
               showAvatar: showAvatar,
               avatarUrl: avatarUrl,
@@ -138,7 +154,7 @@ class LocationBubble extends StatelessWidget {
                   leadingStatus,
                   const SizedBox(width: 6),
                 ],
-                bubbleBox,
+                bubbleWithTime,
               ],
             ),
     );
