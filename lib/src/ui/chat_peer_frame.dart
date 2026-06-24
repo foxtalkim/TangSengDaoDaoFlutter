@@ -92,7 +92,7 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
             maintainState: true,
             child: MoyuResolvedAvatar.raw(
               label: avatarLabel,
-              size: 32,
+              size: 38,
               colors: avatarColors,
               online: false,
               imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
@@ -113,7 +113,7 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
       children: [
         row,
         Padding(
-          padding: EdgeInsets.only(left: hasAvatarSlot ? 40.0 : 0.0),
+          padding: EdgeInsets.only(left: hasAvatarSlot ? 46.0 : 0.0),
           child: footer,
         ),
       ],
