@@ -5709,15 +5709,14 @@ class ChatScreenState extends State<ChatScreen> {
             imGateway: widget.imGateway,
             config: widget.config,
             onContactRemoved: widget.onContactRemoved,
-            onOpenChat: (target) async {
-              if (!mounted) return;
-              if (target.uid == widget.conversation.channelId) return;
-              setState(
-                () => _actionNotice = AppLocalizations.of(
-                  context,
-                ).chatOpenFromContacts(target.name),
-              );
-            },
+            // 非联系人 → stranger 模式: 底部显示「申请添加」(加好友), 不是
+            // 「发消息」。陌生人本就该先加好友才能聊天, 不能直接打开会话
+            // (对齐 iOS isStranger 分支 + ContactDetailPage bottomSticky)。
+            // 修「点别人(非联系人)发的名片错显示发消息且报错去通讯录」bug。
+            isStranger: true,
+            // stranger 模式不渲染发消息按钮, onOpenChat 不会触发; 空实现满足
+            // required 参数。
+            onOpenChat: (_) async {},
           ),
         ),
       );
