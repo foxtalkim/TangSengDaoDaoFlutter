@@ -2386,6 +2386,7 @@ class WukongImService implements ChatImGateway {
   @override
   Future<List<WukongConversationSnapshot>> loadConversations() async {
     final conversations = await WKIM.shared.conversationManager.getAll();
+    final legacyAvatarCacheChannels = <WKChannel>[];
     // 父子会话聚合 — 对齐 iOS WKConversationListVM.addOrCreateParentConversation:
     //   sub-channel (parentChannelID 非空, 一般是 Community 内的 topic 子频道)
     //   会被聚合到父 channel 下, 列表只显示父 channel 一行, 父预览取最新
@@ -2403,8 +2404,17 @@ class WukongImService implements ChatImGateway {
       if (await _isMistypedGroupConversation(conversation)) {
         continue;
       }
-      snapshots.add(await _mapConversation(conversation));
+      snapshots.add(
+        await _mapConversation(
+          conversation,
+          legacyAvatarCacheChannels: legacyAvatarCacheChannels,
+        ),
+      );
     }
+    await _evictLegacyAvatarCachesOnce(
+      legacyAvatarCacheChannels,
+      scope: 'conversations',
+    );
     snapshots.sort((a, b) {
       if (a.pinned != b.pinned) {
         return a.pinned ? -1 : 1;
@@ -2457,6 +2467,7 @@ class WukongImService implements ChatImGateway {
     for (final ch in channels) {
       contacts.add(_contactFromChannel(ch));
     }
+    await _evictLegacyAvatarCachesOnce(channels, scope: 'friends');
     return contacts;
   }
 
@@ -4257,6 +4268,33 @@ class WukongImService implements ChatImGateway {
     }
   }
 
+  Future<void> _evictLegacyAvatarCachesOnce(
+    Iterable<WKChannel?> channels, {
+    required String scope,
+  }) async {
+    final paths = legacyAvatarCachePathsForChannels(channels);
+    if (paths.isEmpty) return;
+    final loginUid = (WKIM.shared.options.uid ?? '').trim();
+    final account = loginUid.isEmpty ? 'anonymous' : loginUid;
+    final key =
+        'im.avatar.legacyFixedCacheEvicted.v1.'
+        '${serverStorageScope(client.config)}.$account.$scope';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(key) == true) return;
+      await Future.wait(
+        paths.map(
+          (path) => CachedNetworkImage.evictFromCache(
+            client.config.showUrl(path),
+          ).catchError((_) => false),
+        ),
+      );
+      await prefs.setBool(key, true);
+    } catch (e) {
+      debugPrint('[avatar] legacy cache eviction skipped: $e');
+    }
+  }
+
   Future<void> _emitConversations() async {
     if (_disposed || _conversationController.isClosed) {
       return;
@@ -4419,14 +4457,18 @@ class WukongImService implements ChatImGateway {
   }
 
   Future<WukongConversationSnapshot> _mapConversation(
-    WKUIConversationMsg conversation,
-  ) async {
+    WKUIConversationMsg conversation, {
+    List<WKChannel>? legacyAvatarCacheChannels,
+  }) async {
     var channel = await conversation.getWkChannel();
     if (needsChannelInfoRefresh(channel, rawIdentity: conversation.channelID)) {
       channel = await _fetchAndCacheChannel(
         conversation.channelID,
         conversation.channelType,
       );
+    }
+    if (channel != null) {
+      legacyAvatarCacheChannels?.add(channel);
     }
     var message = await conversation.getWkMsg();
     // 清空聊天记录后 preview filter — SDK clearWithChannel 把 message 表所有
@@ -5198,6 +5240,20 @@ class WukongImService implements ChatImGateway {
     return target == null ? const [] : [target];
   }
 
+  static Set<String> legacyAvatarCachePathsForChannels(
+    Iterable<WKChannel?> channels,
+  ) {
+    final paths = <String>{};
+    for (final channel in channels) {
+      if (channel == null) continue;
+      final path = _stripQuery(
+        _avatarFor(channel.avatar, channel.channelID, channel.channelType),
+      );
+      if (path.isNotEmpty) paths.add(path);
+    }
+    return paths;
+  }
+
   /// Reads the per-channel screenshot-notification flag, applying native
   /// defaults when the server hasn't surfaced an explicit value:
   /// - 1:1 (personal) channels default to **off** — screenshot broadcast
@@ -5333,6 +5389,12 @@ class WukongImService implements ChatImGateway {
       if (value.isNotEmpty) return value;
     }
     return '';
+  }
+
+  static String _stripQuery(String value) {
+    final raw = value.trim();
+    final query = raw.indexOf('?');
+    return query < 0 ? raw : raw.substring(0, query);
   }
 
   static int _commandChannelType(Object? param) {

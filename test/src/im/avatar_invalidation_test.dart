@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 import 'package:foxtalk/src/im/wukong_im_service.dart';
@@ -46,5 +47,25 @@ void main() {
     expect(groupTargets.single.channelId, 'group-a');
     expect(groupTargets.single.channelType, WKChannelType.group);
     expect(groupTargets.single.avatarPath, 'groups/group-a/avatar');
+  });
+
+  test('collects legacy fixed avatar cache paths from channels', () {
+    final personal = WKChannel('user-b', WKChannelType.personal)
+      ..avatar = 'users/user-b/avatar?v=old-cache';
+    final group = WKChannel('group-a', WKChannelType.group);
+    final external = WKChannel('cdn-user', WKChannelType.personal)
+      ..avatar = 'https://cdn.example.com/u.png?x=1';
+
+    final paths = WukongImService.legacyAvatarCachePathsForChannels([
+      personal,
+      group,
+      external,
+    ]);
+
+    expect(paths, {
+      'users/user-b/avatar',
+      'groups/group-a/avatar',
+      'https://cdn.example.com/u.png',
+    });
   });
 }
