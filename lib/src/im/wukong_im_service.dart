@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1385,22 +1386,36 @@ class WukongImService implements ChatImGateway {
       unawaited(refreshChannel(channelId: channelId, channelType: channelType));
     });
 
-    // group avatar upload — we just need to bust the avatar cache
-    // key so the avatar widget redownloads.
+    // group avatar upload — 头像 URL 是固定路径 `groups/<no>/avatar`,
+    // 不带 cache buster, CachedNetworkImage 默认 disk cache 命中旧文件
+    // 永远不刷新. 先 evict 本地 cache 再 refresh channel info + 重 emit
+    // 会话列表, 让 cell 用空 cache 重下新头像.
     WKIM.shared.cmdManager.addOnCmdListener('moyu_group_avatar', (cmd) {
       if (cmd.cmd != 'groupAvatarUpdate') return;
       final groupNo = channelIdOf(cmd.param);
       if (groupNo.isEmpty) return;
       unawaited(
+        CachedNetworkImage.evictFromCache(
+          client.config.showUrl('groups/$groupNo/avatar'),
+        ),
+      );
+      unawaited(
         refreshChannel(channelId: groupNo, channelType: WKChannelType.group),
       );
     });
 
-    // 1:1 avatar upload.
+    // 1:1 avatar upload — server 只把 CMD 推给好友列表 (不含 sender 自己),
+    // 自己改头像后的 self-evict 在上传调用方; 这里管的是 "别人改头像 →
+    // 我看的换".
     WKIM.shared.cmdManager.addOnCmdListener('moyu_user_avatar', (cmd) {
       if (cmd.cmd != 'userAvatarUpdate') return;
       final uid = channelIdOf(cmd.param);
       if (uid.isEmpty) return;
+      unawaited(
+        CachedNetworkImage.evictFromCache(
+          client.config.showUrl('users/$uid/avatar'),
+        ),
+      );
       unawaited(
         refreshChannel(channelId: uid, channelType: WKChannelType.personal),
       );
