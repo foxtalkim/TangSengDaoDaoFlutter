@@ -1251,14 +1251,24 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Future<void> _openChat(ChatConversation conversation) async {
+  Future<void> _openChat(
+    ChatConversation conversation, {
+    bool stacked = false,
+  }) async {
     // Drop taps that arrive while a previous open is still loading
     // — otherwise queued micro-tasks all fire their own push and the
     // user lands on a stack of chat pages.
-    if (_openingChat) {
-      return;
+    //
+    // stacked = 从「已打开的聊天页内」叠加打开另一个会话 (如群聊页点名片
+    // 「发消息」→ 私聊)。这种不走防抖锁: 锁是给「会话列表 await 期间重复点」
+    // 用的, 而群聊页打开期间 _openingChat 一直是 true (push await 未返回),
+    // 叠加场景被锁住会让 _openChat 被 drop、名片页已 pop → 停在群聊 (报的 bug)。
+    if (!stacked) {
+      if (_openingChat) {
+        return;
+      }
+      _openingChat = true;
     }
-    _openingChat = true;
     try {
       // 聊天密码拦截 — 对齐 iOS WKConversationListVC.didSelectRow:
       //   if (channelInfo.chat_pwd_on && loginInfo.chat_pwd != '') → prompt
@@ -1372,8 +1382,9 @@ class _HomeShellState extends State<HomeShell> {
       );
     } finally {
       // Always release the guard — even when the chat page is popped
-      // back, mounted-check fails, or the load throws.
-      _openingChat = false;
+      // back, mounted-check fails, or the load throws. stacked 没拿锁, 不释放
+      // (否则会提前清掉外层非 stacked _openChat 的锁)。
+      if (!stacked) _openingChat = false;
     }
   }
 
@@ -2024,7 +2035,7 @@ class _HomeShellState extends State<HomeShell> {
       });
     }
 
-    await _openChat(target);
+    await _openChat(target, stacked: true);
   }
 
   Future<bool> _openGroupChat(String groupNo) async {
