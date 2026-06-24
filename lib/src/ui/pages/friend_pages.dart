@@ -29,6 +29,7 @@ import '../detail_scaffold.dart';
 import '../home_seed_data.dart' show conversationColors;
 import '../identity_display.dart' show moyuDisplayName;
 import '../models/contact_models.dart';
+import '../moyu_image_viewer.dart';
 import '../moyu_theme.dart';
 import '../moyu_widgets.dart';
 import '../settings_group_widgets.dart';
@@ -967,29 +968,11 @@ class _FriendRequestTile extends StatelessWidget {
         ),
       );
     }
-    // pending → 主按钮 "确认"
-    return FTappable(
-      onPress: onAccept,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 32,
-        constraints: BoxConstraints(minWidth: 56),
-        padding: EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: MoyuColors.of(context).primary,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          AppLocalizations.of(context).actionConfirm,
-          style: TextStyle(
-            color: MoyuColors.of(context).background,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -0.08,
-          ),
-        ),
-      ),
+    // pending → 主色文字 CTA "确认" (无实心背景, 对齐微信"接受"轻量样式)。
+    // 用现成 MoyuTextButton (primary 文字 15/w500/-0.08), 不 inline 重写按钮。
+    return MoyuTextButton(
+      label: AppLocalizations.of(context).actionConfirm,
+      onPressed: onAccept,
     );
   }
 }
@@ -1395,12 +1378,24 @@ class ContactDetailPageState extends State<ContactDetailPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          MoyuResolvedAvatar.raw(
-            label: _contact.avatarLabel,
-            size: 64,
-            colors: _contact.colors,
-            online: _contact.online,
-            imageUrl: _contact.avatarPath,
+          // 点头像看大图 (名片页头像可点, 对齐微信/iOS WKUserInfoVC)。
+          FTappable(
+            behavior: HitTestBehavior.opaque,
+            onPress: _contact.avatarPath.trim().isEmpty
+                ? null
+                : () => unawaited(
+                    MoyuImageViewer.show(
+                      context,
+                      imageUrl: _contact.avatarPath,
+                    ),
+                  ),
+            child: MoyuResolvedAvatar.raw(
+              label: _contact.avatarLabel,
+              size: 64,
+              colors: _contact.colors,
+              online: _contact.online,
+              imageUrl: _contact.avatarPath,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
