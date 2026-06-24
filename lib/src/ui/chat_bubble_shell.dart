@@ -719,12 +719,14 @@ class Bubble extends StatelessWidget {
     // 气泡本体 (含 reaction / addon / tip, 但**不含** belowMeta) — 头像底部
     // 对齐它。belowMeta (图片/语音/视频/贴纸等下方的时间行) 走
     // MoyuPeerBubbleFrame 的 footer, 渲染在气泡下方, 不把头像往下拉。
-    final bubbleContent =
-        showTip || reactionStrip != null || addon != null
+    // reaction 移出 bubbleContent → 走 footer (跟 belowMeta 一起渲染在气泡下方),
+    // 否则头像底部对齐含 reaction 的 Column, reaction 一出现头像被拉到 reaction
+    // 下方 (对齐乱 bug)。bubbleContent 只含 addon/tip, 头像对齐气泡本体。
+    final bubbleContent = showTip || addon != null
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [interactiveCore, ?addon, ?reactionStrip, ?sensitiveTip],
+            children: [interactiveCore, ?addon, ?sensitiveTip],
           )
         : interactiveCore;
 
@@ -796,7 +798,15 @@ class Bubble extends StatelessWidget {
           )
         : MoyuPeerBubbleFrame(
             bubble: bubbleContent,
-            footer: belowMeta,
+            // belowMeta (时间下方行) + reaction 都走 footer, 渲染在气泡下方,
+            // 不参与头像底部对齐。
+            footer: (belowMeta == null && reactionStrip == null)
+                ? null
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [?belowMeta, ?reactionStrip],
+                  ),
             hasAvatarSlot: hasAvatarSlot,
             showAvatar: showAvatar,
             avatarUrl: avatarUrl,
