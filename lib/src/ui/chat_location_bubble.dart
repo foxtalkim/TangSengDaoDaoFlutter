@@ -83,14 +83,9 @@ class LocationBubble extends StatelessWidget {
         );
       } else if (status == '发送中') {
         leadingStatus = const SendingSpinner();
-      } else if (status == '已发送') {
-        leadingStatus = SendReceiptIndicator(
-          readed: readed,
-          readedCount: readedCount,
-          unreadCount: unreadCount,
-          onTap: onReceiptTap,
-        );
       }
+      // 已发送回执 (✓✓) 改走 MediaTimeChip overlay (时间旁), 不走 leadingStatus,
+      // 跟图片/语音消息一致 (TG 风)。leadingStatus 只保留发送中 / 失败。
     }
 
     final bubbleBox = GestureDetector(
@@ -128,7 +123,15 @@ class LocationBubble extends StatelessWidget {
         Positioned(
           right: 8,
           bottom: 8,
-          child: MediaTimeChip(timeText: timeText),
+          child: MediaTimeChip(
+            timeText: timeText,
+            isMine: isMine,
+            status: status,
+            readed: readed,
+            readedCount: readedCount,
+            unreadCount: unreadCount,
+            onReceiptTap: onReceiptTap,
+          ),
         ),
       ],
     );

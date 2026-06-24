@@ -1449,14 +1449,9 @@ class ChatScreenState extends State<ChatScreen> {
     if (message.status == '发送中') {
       return const SendingSpinner();
     }
-    if (message.status == '已发送') {
-      return SendReceiptIndicator(
-        readed: message.readed,
-        readedCount: message.readedCount,
-        unreadCount: message.unreadCount,
-        onTap: _receiptTapFor(message, disabled: disabled),
-      );
-    }
+    // 已发送回执 (✓✓) 改走 CardBubble 内 MediaTimeChip overlay (时间旁), 不走
+    // leadingStatus 左侧, 跟图片/语音/位置/合并转发一致 (TG 风)。只 CardBubble
+    // 用这个 helper, 发送中 / 失败仍走左侧。
     return null;
   }
 
@@ -7280,6 +7275,11 @@ class ChatScreenState extends State<ChatScreen> {
               ? null
               : (pos) => _showMessageActionsAt(message, pos),
           timeText: formatChatClock(message.timestamp),
+          status: message.status,
+          readed: message.readed,
+          readedCount: message.readedCount,
+          unreadCount: message.unreadCount,
+          onReceiptTap: _receiptTapFor(message, disabled: isMs),
         );
         // 名片头像 + 名字 + 底部对齐布局收口到 MoyuPeerBubbleFrame
         // (跟文本/图片气泡同款), 不再外包手写 avatarSlot + Row。

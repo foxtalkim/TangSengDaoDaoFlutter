@@ -21,6 +21,11 @@ class CardBubble extends StatelessWidget {
     this.onLongPress,
     this.onLongPressAt,
     this.timeText = '',
+    this.status,
+    this.readed = false,
+    this.readedCount = 0,
+    this.unreadCount = 0,
+    this.onReceiptTap,
   });
 
   final bool isMine;
@@ -31,6 +36,11 @@ class CardBubble extends StatelessWidget {
   final VoidCallback? onLongPress;
   final void Function(Offset globalPosition)? onLongPressAt;
   final String timeText;
+  final String? status;
+  final bool readed;
+  final int readedCount;
+  final int unreadCount;
+  final VoidCallback? onReceiptTap;
 
   static const double _cardWidth = 240;
   static const double _topHeight = 68;
@@ -134,7 +144,15 @@ class CardBubble extends StatelessWidget {
         Positioned(
           right: 8,
           bottom: 8,
-          child: MediaTimeChip(timeText: timeText),
+          child: MediaTimeChip(
+            timeText: timeText,
+            isMine: isMine,
+            status: status,
+            readed: readed,
+            readedCount: readedCount,
+            unreadCount: unreadCount,
+            onReceiptTap: onReceiptTap,
+          ),
         ),
       ],
     );
@@ -267,14 +285,9 @@ class MergeForwardBubble extends StatelessWidget {
         );
       } else if (status == '发送中') {
         leadingStatus = const SendingSpinner();
-      } else if (status == '已发送') {
-        leadingStatus = SendReceiptIndicator(
-          readed: readed,
-          readedCount: readedCount,
-          unreadCount: unreadCount,
-          onTap: onReceiptTap,
-        );
       }
+      // 已发送回执改走 MediaTimeChip overlay (时间旁), 不走 leadingStatus,
+      // 跟图片/语音消息一致 (TG 风)。leadingStatus 只保留发送中 / 失败。
     }
 
     final interactiveBubble = GestureDetector(
@@ -295,7 +308,15 @@ class MergeForwardBubble extends StatelessWidget {
         Positioned(
           right: 8,
           bottom: 8,
-          child: MediaTimeChip(timeText: timeText),
+          child: MediaTimeChip(
+            timeText: timeText,
+            isMine: isMine,
+            status: status,
+            readed: readed,
+            readedCount: readedCount,
+            unreadCount: unreadCount,
+            onReceiptTap: onReceiptTap,
+          ),
         ),
       ],
     );

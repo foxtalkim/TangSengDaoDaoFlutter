@@ -97,6 +97,18 @@ class CallBubble extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: fg.withValues(alpha: 0.6)),
             ),
           ],
+          // 已读回执跟 time 一起 inline (图标 → 时间 → 回执), 不走左侧
+          // leadingStatus, 跟图片/语音/名片等其他类型统一 (TG 风)。
+          if (isMine && status == '已发送') ...[
+            const SizedBox(width: 4),
+            SendReceiptIndicator(
+              readed: readed,
+              readedCount: readedCount,
+              unreadCount: unreadCount,
+              onTap: onReceiptTap,
+              foreground: fg,
+            ),
+          ],
         ],
       ),
     );
@@ -113,14 +125,9 @@ class CallBubble extends StatelessWidget {
         );
       } else if (status == '发送中') {
         leadingStatus = const SendingSpinner();
-      } else if (status == '已发送') {
-        leadingStatus = SendReceiptIndicator(
-          readed: readed,
-          readedCount: readedCount,
-          unreadCount: unreadCount,
-          onTap: onReceiptTap,
-        );
       }
+      // 已发送回执改走 bubble 内 inline (time 旁), 不走 leadingStatus, 跟其他
+      // 消息类型统一。leadingStatus 只保留发送中 / 失败。
     }
 
     final interactiveBubble = GestureDetector(
