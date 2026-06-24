@@ -230,6 +230,7 @@ class ChatScreenState extends State<ChatScreen> {
   // 频道清空 / 消息删除事件订阅 — 让当前打开的聊天页跟 home_shell
   // 一样实时反映 SDK / 远端 clear/delete. 没这条之前: 另一台设备 (或
   // 本设备会话列表上) 清空, ChatScreen 内 _messages 不会变, 用户看到
+  // 旧消息还在.
   StreamSubscription<WukongChannelClearedSignal>? _channelClearedSub;
   StreamSubscription<String>? _messageDeletedSub;
   final Map<String, _MessageAiUiState> _messageAiStates =
@@ -1733,6 +1734,7 @@ class ChatScreenState extends State<ChatScreen> {
         // merge 而非整体覆盖 fresh: 保留你刚发、SDK 还没同步进来的本地消息
         // (见 _mergedWithLocal)。否则进对话瞬间 SDK 没同步全自己发的消息时,
         // 直接 _messages = fresh 会吞掉它们 + 打乱时间线, 等 stream 再 emit
+        // 才"灌回来"。
         _messages = merged;
         _hasMoreHistory = fresh.length >= _historyPageSize;
       });
@@ -2446,7 +2448,7 @@ class ChatScreenState extends State<ChatScreen> {
       return conversation.memberCount;
     }
     // 4. 拿不到就不显示 "(N)" (_chatTitleText 对 count<=0 返回纯群名),
-    //    不再用群名 regex / 默认 2 编造一个偏少的数字 (§4.9.8 精神)。
+    //    不再用群名 regex / 默认 2 编造一个偏少的数字。
     return 0;
   }
 
@@ -3243,16 +3245,37 @@ class ChatScreenState extends State<ChatScreen> {
                             data: MediaQuery.of(context).copyWith(
                               textScaler: TextScaler.linear(chatScale),
                             ),
-                            child: ListView(
-                              controller: _messageScrollController,
-                              reverse: true,
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                18,
-                                16,
-                                18,
-                              ),
-                              children: _buildChatRows().reversed.toList(),
+                            child: Builder(
+                              builder: (context) {
+                                // 预计算一遍轻量 row specs (O(n), 不构建任何
+                                // 气泡 widget); 副作用 (flame timer / divider
+                                // 跨条状态) 都在这一遍跑完, 跟旧版 _buildChatRows
+                                // 行为一致。reverse:true 的 ListView 视觉底部 =
+                                // index 0, 所以 itemBuilder 内用
+                                // `length-1-i` 把 specs 反转回来 (specs 是
+                                // oldest→newest, reverse 后 newest 在底)。
+                                final specs = _buildRowSpecs();
+                                return ListView.builder(
+                                  controller: _messageScrollController,
+                                  reverse: true,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    18,
+                                    16,
+                                    18,
+                                  ),
+                                  itemCount: specs.length,
+                                  itemBuilder: (context, i) {
+                                    final spec = specs[specs.length - 1 - i];
+                                    if (spec is _DividerSpec) {
+                                      return spec.widget;
+                                    }
+                                    return _buildMessageRow(
+                                      spec as _MessageSpec,
+                                    );
+                                  },
+                                );
+                              },
                             ),
                           ),
                           if (_showJumpToBottom)
@@ -3359,6 +3382,7 @@ class ChatScreenState extends State<ChatScreen> {
                                         : displayName.characters.first;
                                     // 自己消息 ChatMessage.right 构造 fromAvatarUrl
                                     // 硬编码空串 (line 98/145), 走 config.avatarUrl
+                                    // (loginUid) 兜底 — 对齐头像加载
                                     // SOP, 不让自己引用自己时头像缺失只剩 label。对方
                                     // 消息 fromAvatarUrl 已由 fromSnapshot 填充, 不动。
                                     final replyAvatarUrl = replyTo.isMine
@@ -3454,23 +3478,21 @@ class ChatScreenState extends State<ChatScreen> {
                                                 // (primary)边框, 所有状态统一浅
                                                 // line 边 (用户要求「选中后不要
                                                 // 黑边」)。
-                                                style:
-                                                    FTextFieldStyleDelta.delta(
-                                                      border: FVariants.all(
-                                                        OutlineInputBorder(
-                                                          borderSide: BorderSide(
-                                                            color:
-                                                                MoyuColors.of(
-                                                                  context,
-                                                                ).line,
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                8,
-                                                              ),
-                                                        ),
+                                                style: FTextFieldStyleDelta.delta(
+                                                  border: FVariants.all(
+                                                    OutlineInputBorder(
+                                                      borderSide: BorderSide(
+                                                        color: MoyuColors.of(
+                                                          context,
+                                                        ).line,
                                                       ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
                                                     ),
+                                                  ),
+                                                ),
                                                 control:
                                                     FTextFieldControl.managed(
                                                       controller:
@@ -5506,7 +5528,11 @@ class ChatScreenState extends State<ChatScreen> {
 
   /// 群聊对方消息的头像 / 名字参数, 给独立 bubble widget (位置 / 合并转发 /
   /// 未知) 传入 MoyuPeerBubbleFrame。streak 末条显头像、首条显名字; 1v1 或
-  /// 自己消息返回空槽 (hasAvatarSlot=false)。i 是 _messages 索引。
+  /// 自己消息返回空槽 (hasAvatarSlot=false)。
+  ///
+  /// streak 状态由调用方 (`_buildMessageRow`) 从预计算的 `_MessageSpec` 取,
+  /// 不在这里现场扫 prev/next visible —— 行为跟旧版逐条算一致, 只是把 O(n)
+  /// 扫描提前到 `_buildRowSpecs` 的一遍 O(n) prev/next-visible map。
   ({
     bool hasAvatarSlot,
     bool showAvatar,
@@ -5515,7 +5541,11 @@ class ChatScreenState extends State<ChatScreen> {
     List<Color> avatarColors,
     String senderName,
   })
-  _peerBubbleArgs(ChatMessage message, int i) {
+  _peerBubbleArgs(
+    ChatMessage message, {
+    required bool isStreakStart,
+    required bool isStreakEnd,
+  }) {
     if (!_isGroupChat || message.isMine) {
       return (
         hasAvatarSlot: false,
@@ -5526,16 +5556,6 @@ class ChatScreenState extends State<ChatScreen> {
         senderName: '',
       );
     }
-    final isStreakStart = !isSameLeftMessageStreak(
-      _messages,
-      i,
-      previousVisibleMessageIndex(_messages, i),
-    );
-    final isStreakEnd = !isSameLeftMessageStreak(
-      _messages,
-      i,
-      nextVisibleMessageIndex(_messages, i),
-    );
     return (
       hasAvatarSlot: true,
       showAvatar: isStreakEnd,
@@ -6607,6 +6627,7 @@ class ChatScreenState extends State<ChatScreen> {
   void _openCall(ChatCallType type) {
     // PIP 通话进行时拦截 — 之前用户最小化后回聊天页又点通话, 新 call
     // 会覆盖 RTC session + connectRoom disconnect 旧 room, 但
+    // 旧 server session 不一定挂断.
     if (_rtcSessionApi?.hasActiveCall() ?? false) {
       MoyuToast.show(
         context,
@@ -6733,6 +6754,7 @@ class ChatScreenState extends State<ChatScreen> {
     }
     // Pick the modality the room was created with (server returns
     // `call_type`). Previously hardcoded to audio so video groups
+    // joined as voice.
     final callType = _activeGroupCallType == 1
         ? ChatCallType.video
         : ChatCallType.audio;
@@ -6774,6 +6796,7 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openGroupCall(ChatCallType type) async {
+    // PIP 通话进行时拦截 (同 _openCall).
     if (_rtcSessionApi?.hasActiveCall() ?? false) {
       MoyuToast.show(
         context,
@@ -6940,19 +6963,30 @@ class ChatScreenState extends State<ChatScreen> {
     return text;
   }
 
-  /// Build a flat widget list out of [_messages] inserting:
+  /// Precompute the flat list of row descriptors for [_messages] in a single
+  /// O(n) pass — no widgets are built here. This produces, in natural
+  /// (oldest→newest) order:
+  ///   - the history-loading spinner ([HistoryLoadingRow]) when paginating;
   ///   - centered date-stamp dividers when timestamps cross days or have a
-  ///     5-minute (300s) gap (V2)
-  ///   - centered system rows for call/system content types (C1/F1)
-  ///   - left bubbles whose avatar shows only on the streak END (matches
-  ///     native iOS: First/Middle hidden, Last/Single shown) and whose
-  ///     sender name shows only on the streak START (First/Single)
-  ///   - in 1:1 (personal) chats, peer bubbles render with no avatar slot at
-  ///     all — matching native `isPersonChannel` behavior
-  List<Widget> _buildChatRows() {
-    final rows = <Widget>[];
+  ///     5-minute (300s) gap (V2);
+  ///   - the "以上为历史消息" split + "以下为新消息" unread dividers at their
+  ///     anchor rows (history split first when both land on the same row);
+  ///   - one [_MessageSpec] per *visible* message, carrying the streak flags
+  ///     (`isStreakStart`/`isStreakEnd`) so `_buildMessageRow` never re-scans
+  ///     hidden neighbors.
+  ///
+  /// Two cross-cutting behaviors are preserved exactly from the old inline
+  /// `_buildChatRows` so the懒加载 ListView.builder stays行为不变:
+  ///   1. Hidden frames ([ChatMessage.isHiddenRtcSignalingFrame] /
+  ///      [ChatMessage.isEmptyInboundTextMessage]) produce NO row, do NOT
+  ///      advance `prevTimestamp`, and do NOT start a flame timer — they only
+  ///      defer a pending divider to the next visible row.
+  ///   2. The阅后即焚 destroy timer is started for **every** non-hidden,
+  ///      non-revoked message right here.
+  List<_ChatRowSpec> _buildRowSpecs() {
+    final specs = <_ChatRowSpec>[];
     if (_isLoadingOlder) {
-      rows.add(const HistoryLoadingRow());
+      specs.add(const _DividerSpec(HistoryLoadingRow()));
     }
     // Mark where the unread page started so we can drop a "以下是新
     // 消息" divider above the first unread row. Re-resolves from the
@@ -6977,7 +7011,30 @@ class ChatScreenState extends State<ChatScreen> {
     final historySplitIndex = _resolveHistorySplitIndex();
     bool pendingHistorySplit = false;
 
-    for (var i = 0; i < _messages.length; i++) {
+    // Precompute prev/next visible neighbor for every index in two passes
+    // (O(n) total) so streak resolution below is O(1) per row instead of the
+    // old O(n) `previousVisibleMessageIndex` / `nextVisibleMessageIndex`
+    // re-scan at each of the 8 call sites. `previousVisibleMessageIndex`
+    // returns -1 when none; `nextVisibleMessageIndex` returns `length`.
+    final n = _messages.length;
+    final prevVisible = List<int>.filled(n, -1);
+    final nextVisible = List<int>.filled(n, n);
+    int lastVisible = -1;
+    for (var i = 0; i < n; i++) {
+      prevVisible[i] = lastVisible;
+      if (!_isHiddenTimelineFrame(_messages[i])) {
+        lastVisible = i;
+      }
+    }
+    int nextVisibleCursor = n;
+    for (var i = n - 1; i >= 0; i--) {
+      nextVisible[i] = nextVisibleCursor;
+      if (!_isHiddenTimelineFrame(_messages[i])) {
+        nextVisibleCursor = i;
+      }
+    }
+
+    for (var i = 0; i < n; i++) {
       final message = _messages[i];
 
       // Hidden frames must not produce a row. Besides RTC signaling, AG-UI
@@ -6996,11 +7053,13 @@ class ChatScreenState extends State<ChatScreen> {
       }
 
       if (shouldInsertChatDateStamp(prevTimestamp, message.timestamp)) {
-        rows.add(
-          DateStamp(
-            formatChatDateStamp(
-              AppLocalizations.of(context),
-              message.timestamp,
+        specs.add(
+          _DividerSpec(
+            DateStamp(
+              formatChatDateStamp(
+                AppLocalizations.of(context),
+                message.timestamp,
+              ),
             ),
           ),
         );
@@ -7013,558 +7072,546 @@ class ChatScreenState extends State<ChatScreen> {
       //   ──── 3 条新消息 ────
       //   …new messages
       if (i == historySplitIndex || pendingHistorySplit) {
-        rows.add(const HistorySplitRow());
+        specs.add(const _DividerSpec(HistorySplitRow()));
         pendingHistorySplit = false;
       }
       if (i == unreadDividerIndex || pendingUnreadDivider) {
-        rows.add(UnreadHistoryDivider(count: _initialUnreadCount));
+        specs.add(
+          _DividerSpec(UnreadHistoryDivider(count: _initialUnreadCount)),
+        );
         pendingUnreadDivider = false;
       }
       prevTimestamp = message.timestamp;
 
       // For flame-enabled channels: schedule a destruction timer the
-      // first time a real-id message hits the row builder.
+      // first time a real-id message hits the precompute pass. Runs for
+      // every message (not just on-screen ones) so lazy rendering doesn't
+      // change when flame messages self-destruct.
       if (_flameEnabled && !message.revoked) {
         _maybeStartFlameTimer(message);
       }
 
-      if (message.revoked) {
-        rows.add(
-          RevokeRow(
-            isMine: message.isMine,
-            fromName: _senderName(message),
-            revokerIsSelf:
-                message.revoker.isEmpty || message.revoker == widget.loginUid,
-            originalText: message.text,
-            // 对齐 iOS WKMessageRevokeCell: 仅**文本消息**显示"重新编辑"
-            // (图片/视频/语音/文件 撤回后没有可恢复的 raw 文本). iOS
-            // 判断 `messageModel.contentType == WK_TEXT (1)`. 之前 Flutter
-            // 写成 `kind == ChatMediaKind.file` — 因为 ChatMessage.kind
-            // 默认值就是 file (文本消息 fromSnapshot 走 _ => null 分支后
-            // .right() 回到默认), 意外能命中文本; 但文件消息也是 file,
-            // 仅靠 text.isNotEmpty 才把文件撤回卡掉, 语义混乱. 直接用
-            // contentType 判更准确.
-            recallable:
-                message.isMine &&
-                // WkMessageContentType.text == 1 (跟 line 5358 同写法,
-                // 避免 import SDK 常量到 mega-file 顶层)
-                message.contentType == 1 &&
-                message.text.isNotEmpty &&
-                // Spec §6 P2: hide 重新编辑 on already-edited messages
-                // since restoring the original text would discard the
-                // edit. Mirrors native iOS guard.
-                message.editedText.isEmpty,
-            onReedit: message.isMine ? () => _restoreToComposer(message) : null,
-          ),
-        );
-        continue;
-      }
-      if (message.isSystemMessage) {
-        // All system messages — including the group-call invite —
-        // render as the usual non-tappable centered tip. The join
-        // action moved to the top-of-screen banner (more visible,
-        // matches WeChat / WhatsApp), so the 9988 message is now
-        // purely a historical breadcrumb.
-        rows.add(SystemMessageRow(text: _resolveSystemText(message)));
-        continue;
-      }
+      specs.add(
+        _MessageSpec(
+          msgIndex: i,
+          isStreakStart: !isSameLeftMessageStreak(_messages, i, prevVisible[i]),
+          isStreakEnd: !isSameLeftMessageStreak(_messages, i, nextVisible[i]),
+        ),
+      );
+    }
+    return specs;
+  }
 
-      if (message.isCallMessage) {
-        // Tap-to-recall preserves the original modality of this call. Native
-        // iOS WKVideoCallSystemCell.onTap shows an action sheet with both
-        // 视频聊天 / 语音聊天; our condensed UX just re-opens with the same
-        // type. Previously hardcoded `audio` regardless of the bubble — see
-        // call-bubble.md §2.4.
-        final recallType = message.callType == 1
-            ? ChatCallType.video
-            : ChatCallType.audio;
-        // 跟普通 Bubble.left 同款 streak 计算 + avatar 数据透传, 让通话气泡
-        // 跟其他气泡左对齐 (私聊 bubble.margin 8) + 群聊显头像 + 显发送者名.
-        // 跟前 / 后条同 streak 时不显头像 / 不显名 (streak start/end 才显).
-        final isStreakStart = !isSameLeftMessageStreak(
-          _messages,
-          i,
-          previousVisibleMessageIndex(_messages, i),
-        );
-        final isStreakEnd = !isSameLeftMessageStreak(
-          _messages,
-          i,
-          nextVisibleMessageIndex(_messages, i),
-        );
-        final showAvatar = _isGroupChat && !message.isMine && isStreakEnd;
-        final showSenderName = _isGroupChat && !message.isMine && isStreakStart;
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            CallBubble(
-              message: message,
-              isMine: message.isMine,
-              hasAvatarSlot: _isGroupChat,
-              showAvatar: showAvatar,
-              avatarLabel: _bubbleSenderLabel(message, widget.conversation),
-              avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
-              avatarColors: _bubbleSenderColors(message, widget.conversation),
-              senderName: showSenderName ? _senderName(message) : '',
-              // In a group conversation re-tap on an old call bubble
-              // must NOT go through the P2P path — that would send
-              // `/rtc/p2p/invoke` with the group id as peer_uid and
-              // generate a fake private-chat record (user-facing bug:
-              // "点击曾经的通话气泡发起不知道去哪的对话"). Route to
-              // the group picker instead.
-              onTap: () {
-                if (_conversation.channelType == WKChannelType.group) {
-                  unawaited(_openGroupCall(recallType));
-                } else {
-                  _openCall(recallType);
-                }
-              },
-              onLongPress: () => _showMessageActions(message),
-              onLongPressAt: (pos) => _showMessageActionsAt(message, pos),
-              status: message.status,
-              readed: message.readed,
-              readedCount: message.readedCount,
-              unreadCount: message.unreadCount,
-              onReceiptTap: _receiptTapFor(message, disabled: false),
-              onRetry: message.status == '发送失败'
-                  ? () => _retryMessage(message)
-                  : null,
-              onDelete: message.status == '发送失败'
-                  ? () => setState(() => _messages.remove(message))
-                  : null,
-              timeText: formatChatClock(message.timestamp),
-            ),
-          ),
-        );
-        continue;
-      }
+  /// Mirror of the private `_isHiddenTimelineMessage` in
+  /// `chat_timeline_logic.dart` (a hidden RTC signaling frame or an empty
+  /// inbound text carrier). Used to build the prev/next-visible maps so the
+  /// streak booleans match `previousVisibleMessageIndex` /
+  /// `nextVisibleMessageIndex` exactly.
+  bool _isHiddenTimelineFrame(ChatMessage message) =>
+      message.isHiddenRtcSignalingFrame || message.isEmptyInboundTextMessage;
 
-      if (message.isMergeForwardMessage) {
-        final isMs = _isMultiSelect && _canMultiSelect(message);
-        final pa = _peerBubbleArgs(message, i);
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            MergeForwardBubble(
-              isMine: message.isMine,
-              title: localizedMergeForwardTitle(
-                AppLocalizations.of(context),
-                message,
-              ),
-              entries: message.mergeForwardEntries,
-              onTap: isMs
-                  ? () => _toggleSelection(message)
-                  : () => _openMergeForwardDetail(message),
-              onLongPress: isMs ? null : () => _showMessageActions(message),
-              onLongPressAt: isMs
-                  ? null
-                  : (pos) => _showMessageActionsAt(message, pos),
-              status: message.status,
-              readed: message.readed,
-              readedCount: message.readedCount,
-              unreadCount: message.unreadCount,
-              onReceiptTap: _receiptTapFor(message, disabled: isMs),
-              onRetry: message.status == '发送失败'
-                  ? () => _retryMessage(message)
-                  : null,
-              onDelete: message.status == '发送失败'
-                  ? () => setState(() => _messages.remove(message))
-                  : null,
-              hasAvatarSlot: pa.hasAvatarSlot,
-              showAvatar: pa.showAvatar,
-              avatarUrl: pa.avatarUrl,
-              avatarLabel: pa.avatarLabel,
-              avatarColors: pa.avatarColors,
-              senderName: pa.senderName,
-              timeText: formatChatClock(message.timestamp),
-            ),
-          ),
-        );
-        continue;
-      }
+  /// Build the bubble widget for a single message row. Dispatches across the
+  /// 15 content-type branches — exactly the body the old `_buildChatRows`
+  /// inlined, with each `rows.add(...); continue;` turned into `return ...;`.
+  /// `spec` carries the precomputed streak flags so the avatar/sender-name
+  /// rules are resolved without re-scanning neighbors.
+  Widget _buildMessageRow(_MessageSpec spec) {
+    final i = spec.msgIndex;
+    final message = _messages[i];
+    final specIsStreakStart = spec.isStreakStart;
+    final specIsStreakEnd = spec.isStreakEnd;
 
-      if (message.isGroupInviteApproval) {
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            GroupInviteApprovalBubble(
-              text: message.text,
-              onConfirm: () => unawaited(_openGroupInviteConfirm(message)),
-              onLongPress: () => _showMessageActions(message),
-            ),
-          ),
-        );
-        continue;
-      }
+    if (message.revoked) {
+      return RevokeRow(
+        isMine: message.isMine,
+        fromName: _senderName(message),
+        revokerIsSelf:
+            message.revoker.isEmpty || message.revoker == widget.loginUid,
+        originalText: message.text,
+        // 对齐 iOS WKMessageRevokeCell: 仅**文本消息**显示"重新编辑"
+        // (图片/视频/语音/文件 撤回后没有可恢复的 raw 文本). iOS
+        // 判断 `messageModel.contentType == WK_TEXT (1)`. 之前 Flutter
+        // 写成 `kind == ChatMediaKind.file` — 因为 ChatMessage.kind
+        // 默认值就是 file (文本消息 fromSnapshot 走 _ => null 分支后
+        // .right() 回到默认), 意外能命中文本; 但文件消息也是 file,
+        // 仅靠 text.isNotEmpty 才把文件撤回卡掉, 语义混乱. 直接用
+        // contentType 判更准确.
+        recallable:
+            message.isMine &&
+            // WkMessageContentType.text == 1 (跟 line 5358 同写法,
+            // 避免 import SDK 常量到 mega-file 顶层)
+            message.contentType == 1 &&
+            message.text.isNotEmpty &&
+            // Spec §6 P2: hide 重新编辑 on already-edited messages
+            // since restoring the original text would discard the
+            // edit. Mirrors native iOS guard.
+            message.editedText.isEmpty,
+        onReedit: message.isMine ? () => _restoreToComposer(message) : null,
+      );
+    }
+    if (message.isSystemMessage) {
+      // All system messages — including the group-call invite —
+      // render as the usual non-tappable centered tip. The join
+      // action moved to the top-of-screen banner (more visible,
+      // matches WeChat / WhatsApp), so the 9988 message is now
+      // purely a historical breadcrumb.
+      return SystemMessageRow(text: _resolveSystemText(message));
+    }
 
-      if (message.isScreenshotMessage) {
-        rows.add(
-          SystemMessageRow(
-            text: AppLocalizations.of(
-              context,
-            ).chatScreenshotNotice(message.screenshotFromName),
-          ),
-        );
-        continue;
-      }
-
-      if (shouldRenderModuleContentFallback(message, widget.runtime)) {
-        final pa = _peerBubbleArgs(message, i);
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            UnknownContentRow(
-              isMine: message.isMine,
-              text: AppLocalizations.of(context).moduleUnsupported,
-              hasAvatarSlot: pa.hasAvatarSlot,
-              showAvatar: pa.showAvatar,
-              avatarUrl: pa.avatarUrl,
-              avatarLabel: pa.avatarLabel,
-              avatarColors: pa.avatarColors,
-              senderName: pa.senderName,
-            ),
-          ),
-        );
-        continue;
-      }
-
-      if (message.isLocationMessage) {
-        final isMs = _isMultiSelect && _canMultiSelect(message);
-        final pa = _peerBubbleArgs(message, i);
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            LocationBubble(
-              isMine: message.isMine,
-              title: message.locationTitle,
-              address: message.locationAddress,
-              latitude: message.locationLat,
-              longitude: message.locationLng,
-              imageUrl: message.locationImageUrl,
-              onTap: isMs
-                  ? () => _toggleSelection(message)
-                  : () => unawaited(_openLocation(message)),
-              onLongPress: isMs ? null : () => _showMessageActions(message),
-              onLongPressAt: isMs
-                  ? null
-                  : (pos) => _showMessageActionsAt(message, pos),
-              status: message.status,
-              readed: message.readed,
-              readedCount: message.readedCount,
-              unreadCount: message.unreadCount,
-              onReceiptTap: _receiptTapFor(message, disabled: isMs),
-              onRetry: message.status == '发送失败'
-                  ? () => _retryMessage(message)
-                  : null,
-              onDelete: message.status == '发送失败'
-                  ? () => setState(() => _messages.remove(message))
-                  : null,
-              hasAvatarSlot: pa.hasAvatarSlot,
-              showAvatar: pa.showAvatar,
-              avatarUrl: pa.avatarUrl,
-              avatarLabel: pa.avatarLabel,
-              avatarColors: pa.avatarColors,
-              senderName: pa.senderName,
-              timeText: formatChatClock(message.timestamp),
-            ),
-          ),
-        );
-        continue;
-      }
-
-      if (message.isCardMessage) {
-        final isMs = _isMultiSelect && _canMultiSelect(message);
-        // 群聊 cell 框架 — 跟 Bubble.left 同模式: streak end 显头像,
-        // streak start 显发送者名, 否则只一行卡片. 1v1 无头像无名字.
-        final isStreakStart = !isSameLeftMessageStreak(
-          _messages,
-          i,
-          previousVisibleMessageIndex(_messages, i),
-        );
-        final isStreakEnd = !isSameLeftMessageStreak(
-          _messages,
-          i,
-          nextVisibleMessageIndex(_messages, i),
-        );
-        final showAvatar = _isGroupChat && !message.isMine && isStreakEnd;
-        final showSenderName = _isGroupChat && !message.isMine && isStreakStart;
-        final senderName = showSenderName ? _senderName(message) : '';
-        final leadingStatus = _leadingStatusFor(message, disabled: isMs);
-        final card = CardBubble(
+    if (message.isCallMessage) {
+      // Tap-to-recall preserves the original modality of this call. Native
+      // iOS WKVideoCallSystemCell.onTap shows an action sheet with both
+      // 视频聊天 / 语音聊天; our condensed UX just re-opens with the same
+      // type. Previously hardcoded `audio` regardless of the bubble — see
+      // call-bubble.md §2.4.
+      final recallType = message.callType == 1
+          ? ChatCallType.video
+          : ChatCallType.audio;
+      // 跟普通 Bubble.left 同款 streak 计算 + avatar 数据透传, 让通话气泡
+      // 跟其他气泡左对齐 (私聊 bubble.margin 8) + 群聊显头像 + 显发送者名.
+      // 跟前 / 后条同 streak 时不显头像 / 不显名 (streak start/end 才显).
+      // streak 标记从预计算 spec 取, 跟旧版逐条 prev/next visible 一致。
+      final showAvatar = _isGroupChat && !message.isMine && specIsStreakEnd;
+      final showSenderName =
+          _isGroupChat && !message.isMine && specIsStreakStart;
+      return _wrapForMultiSelect(
+        message,
+        CallBubble(
+          message: message,
           isMine: message.isMine,
-          name: message.cardName,
-          uid: message.cardUid,
-          // 透传 config 用于拼 avatar URL (DESIGN.md §5.5 / SOP §4.8).
-          config: widget.config,
+          hasAvatarSlot: _isGroupChat,
+          showAvatar: showAvatar,
+          avatarLabel: _bubbleSenderLabel(message, widget.conversation),
+          avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
+          avatarColors: _bubbleSenderColors(message, widget.conversation),
+          senderName: showSenderName ? _senderName(message) : '',
+          // In a group conversation re-tap on an old call bubble
+          // must NOT go through the P2P path — that would send
+          // `/rtc/p2p/invoke` with the group id as peer_uid and
+          // generate a fake private-chat record (user-facing bug:
+          // "点击曾经的通话气泡发起不知道去哪的对话"). Route to
+          // the group picker instead.
+          onTap: () {
+            if (_conversation.channelType == WKChannelType.group) {
+              unawaited(_openGroupCall(recallType));
+            } else {
+              _openCall(recallType);
+            }
+          },
+          onLongPress: () => _showMessageActions(message),
+          onLongPressAt: (pos) => _showMessageActionsAt(message, pos),
+          status: message.status,
+          readed: message.readed,
+          readedCount: message.readedCount,
+          unreadCount: message.unreadCount,
+          onReceiptTap: _receiptTapFor(message, disabled: false),
+          onRetry: message.status == '发送失败'
+              ? () => _retryMessage(message)
+              : null,
+          onDelete: message.status == '发送失败'
+              ? () => setState(() => _messages.remove(message))
+              : null,
+          timeText: formatChatClock(message.timestamp),
+        ),
+      );
+    }
+
+    if (message.isMergeForwardMessage) {
+      final isMs = _isMultiSelect && _canMultiSelect(message);
+      final pa = _peerBubbleArgs(
+        message,
+        isStreakStart: specIsStreakStart,
+        isStreakEnd: specIsStreakEnd,
+      );
+      return _wrapForMultiSelect(
+        message,
+        MergeForwardBubble(
+          isMine: message.isMine,
+          title: localizedMergeForwardTitle(
+            AppLocalizations.of(context),
+            message,
+          ),
+          entries: message.mergeForwardEntries,
           onTap: isMs
               ? () => _toggleSelection(message)
-              : () => unawaited(_openCardProfile(message.cardUid)),
+              : () => _openMergeForwardDetail(message),
           onLongPress: isMs ? null : () => _showMessageActions(message),
           onLongPressAt: isMs
               ? null
               : (pos) => _showMessageActionsAt(message, pos),
-          timeText: formatChatClock(message.timestamp),
           status: message.status,
           readed: message.readed,
           readedCount: message.readedCount,
           unreadCount: message.unreadCount,
           onReceiptTap: _receiptTapFor(message, disabled: isMs),
-        );
-        // 名片头像 + 名字 + 底部对齐布局收口到 MoyuPeerBubbleFrame
-        // (跟文本/图片气泡同款), 不再外包手写 avatarSlot + Row。
-        final cellRow = Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: message.isMine
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (leadingStatus != null) ...[
-                      leadingStatus,
-                      const SizedBox(width: 6),
-                    ],
-                    card,
-                  ],
-                )
-              : MoyuPeerBubbleFrame(
-                  bubble: card,
-                  hasAvatarSlot: _isGroupChat,
-                  showAvatar: showAvatar,
-                  avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
-                  avatarLabel: _bubbleSenderLabel(message, widget.conversation),
-                  avatarColors: _bubbleSenderColors(message, widget.conversation),
-                  senderName: senderName,
-                ),
-        );
-        rows.add(_wrapForMultiSelect(message, cellRow));
-        continue;
-      }
-
-      if (_isUnknownContent(message)) {
-        final pa = _peerBubbleArgs(message, i);
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            UnknownContentRow(
-              isMine: message.isMine,
-              hasAvatarSlot: pa.hasAvatarSlot,
-              showAvatar: pa.showAvatar,
-              avatarUrl: pa.avatarUrl,
-              avatarLabel: pa.avatarLabel,
-              avatarColors: pa.avatarColors,
-              senderName: pa.senderName,
-            ),
-          ),
-        );
-        continue;
-      }
-
-      if (message.isMine) {
-        final isMs = _isMultiSelect && _canMultiSelect(message);
-        final aiAction = _voiceAiActionFor(message, disabled: isMs);
-        final aiAddon = _messageAiAddonFor(message);
-        rows.add(
-          _wrapForMultiSelect(
-            message,
-            Bubble.right(
-              text: message.effectiveText,
-              streamingPlaceholder: isAguiStreamingPlaceholder(message),
-              timeText: formatChatClock(message.timestamp),
-              edited: message.isEdited,
-              reactions: message.reactions,
-              onReactionTap: (emoji) =>
-                  unawaited(_toggleReaction(message, emoji)),
-              uploadProgress: message.clientMsgNo.isEmpty
-                  ? null
-                  : _uploadProgress[message.clientMsgNo],
-              flameSecond: _flameEnabled ? _flameSecond : 0,
-              // Per-message flame deadline so the badge ticks down
-              // independently per bubble. Falls back to 0 when we
-              // don't yet have a server timestamp (local optimistic
-              // message), in which case the badge renders the static
-              // channel TTL instead of a stale countdown.
-              flameExpiresAtMs: flameExpiresAtMsForMessage(
-                flameEnabled: _flameEnabled,
-                flameSecond: _flameSecond,
-                message: message,
-              ),
-              mediaGateway: widget.mediaGateway,
-              kind: message.kind,
-              attachment: message.attachment,
-              status: message.status,
-              readed: message.readed,
-              readedCount: message.readedCount,
-              unreadCount: message.unreadCount,
-              onReceiptTap: _receiptTapFor(message, disabled: isMs),
-              replyToSender: message.replyToSender,
-              replyToText: message.replyToText,
-              replyToRevoked: message.replyToRevoked,
-              onReplyTap: _buildReplyTap(message),
-              messageKey: _messagePlaybackKey(message),
-              voiceSideAction: aiAction,
-              messageAddon: aiAddon,
-              onSwipeReply: isMs ? null : () => _startReplyToMessage(message),
-              onTap: isMs
-                  ? () => _toggleSelection(message)
-                  : switch (message.kind) {
-                      ChatMediaKind.image => () => _openImagePreview(message),
-                      ChatMediaKind.voice => () => unawaited(
-                        _playVoice(message),
-                      ),
-                      ChatMediaKind.video => () => _openVideoPlayback(message),
-                      ChatMediaKind.livePhoto => () => _openLivePhotoPlayback(
-                        message,
-                      ),
-                      // ChatMessage.left/right 默认 kind=file 但 attachment=null
-                      // (纯文本消息构造时不传 kind → 落 file 分支). 加 when
-                      // guard 让 fallback 走 _ => null, 避免纯文本气泡 tap
-                      // 触发 _openFileInfo → 弹 "文件信息缺失" toast.
-                      ChatMediaKind.file when message.attachment != null =>
-                        () => _openFileInfo(message),
-                      _ => null,
-                    },
-              // 双击文本 = 快速 ❤️ reaction. 编辑入口保留在长按菜单,
-              // 但只把原文本回填到输入框给用户再操作, 不再弹 modal.
-              // isMs 多选模式期间不要触发 reaction (会跟 toggleSelection
-              // 抢手势). messageId 非空保证 `_toggleReaction` 能发到服务端.
-              onDoubleTap:
-                  !isMs &&
-                      message.contentType == 1 &&
-                      !message.revoked &&
-                      message.messageId.isNotEmpty
-                  ? () => unawaited(_toggleReaction(message, 'love'))
-                  : null,
-              onRetry: message.status == '发送失败'
-                  ? () => _retryMessage(message)
-                  : null,
-              onDelete: message.status == '发送失败'
-                  ? () => setState(() => _messages.remove(message))
-                  : null,
-              onMentionTap: isMs ? null : _resolveMentionTap,
-              mentionCandidates: _mentionCandidates,
-              // 所有消息 kind 走统一通用 context menu (含 reaction strip +
-              // 回复 / 转发 / 收藏 / 编辑图片 / 多选 / 撤回 / 删除). 跟 iOS
-              // 原版气泡长按 → WKMessageActionMenu 同模式. [保存到相册 /
-              // 识别二维码 / 添加到表情] 3 个图片相关 action 在 _ImageLightbox
-              // (点图进全屏) 提供, 跟 iOS WKImageBrowser 长按全屏图同位置.
-              onLongPress: isMs ? null : () => _showMessageActions(message),
-              onLongPressAt: isMs
-                  ? null
-                  : (pos) => _showMessageActionsAt(message, pos),
-            ),
-          ),
-        );
-        continue;
-      }
-
-      // left bubble — avatar appears only at the streak END and the sender
-      // name only at the streak START (matches native iOS bubble position
-      // rules). In 1:1 chats there is no avatar slot at all.
-      // Walk past hidden RTC signaling frames when picking streak
-      // neighbors so an invisible 9990..9998 frame between two visible
-      // bubbles from the same sender doesn't split their visual streak
-      // (no orphan avatar/name break around something the user can't see).
-      final isStreakStart = !isSameLeftMessageStreak(
-        _messages,
-        i,
-        previousVisibleMessageIndex(_messages, i),
-      );
-      final isStreakEnd = !isSameLeftMessageStreak(
-        _messages,
-        i,
-        nextVisibleMessageIndex(_messages, i),
-      );
-      final showAvatar = _isGroupChat && isStreakEnd;
-      final showSenderName = _isGroupChat && isStreakStart;
-      final isMs = _isMultiSelect && _canMultiSelect(message);
-      final aiAction = _voiceAiActionFor(message, disabled: isMs);
-      final aiAddon = _messageAiAddonFor(message);
-      rows.add(
-        _wrapForMultiSelect(
-          message,
-          Bubble.left(
-            avatarLabel: _bubbleSenderLabel(message, widget.conversation),
-            avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
-            text: message.effectiveText,
-            streamingPlaceholder: isAguiStreamingPlaceholder(message),
-            timeText: formatChatClock(message.timestamp),
-            // 被回复计数 — 对方/群消息气泡末尾显示 ⬅️N. 数据来自 server
-            // message_extra.reply_count → SDK 本地表 → ChatMessage.replyCount.
-            replyCount: message.replyCount,
-            edited: message.isEdited,
-            reactions: message.reactions,
-            onReactionTap: (emoji) =>
-                unawaited(_toggleReaction(message, emoji)),
-            flameSecond: _flameEnabled ? _flameSecond : 0,
-            flameExpiresAtMs: flameExpiresAtMsForMessage(
-              flameEnabled: _flameEnabled,
-              flameSecond: _flameSecond,
-              message: message,
-            ),
-            mediaGateway: widget.mediaGateway,
-            kind: message.kind,
-            attachment: message.attachment,
-            // Show the trailing red dot on received voice bubbles
-            // until the user plays it. Two clear paths:
-            //   1. Server-side flip: `_playVoice` POSTs
-            //      `markVoiceMessageRead`; the next snapshot
-            //      refresh carries `voiceStatus = 1`.
-            //   2. Local optimistic: `_locallyHeardVoiceIds`
-            //      tracks ids the user just played; OR'd here so
-            //      the dot clears instantly even if the SDK's
-            //      sync path drops the extra-side voice_status
-            //      back to 0 (a known SDK 1.7.9 gap).
-            voiceUnread:
-                message.kind == ChatMediaKind.voice &&
-                message.voiceStatus == 0 &&
-                !_locallyHeardVoiceIds.contains(message.messageId),
-            colors: _bubbleSenderColors(message, widget.conversation),
-            hasAvatarSlot: _isGroupChat,
-            showAvatar: showAvatar,
-            senderName: showSenderName ? _senderName(message) : '',
-            replyToSender: message.replyToSender,
-            replyToText: message.replyToText,
-            replyToRevoked: message.replyToRevoked,
-            onReplyTap: _buildReplyTap(message),
-            messageKey: _messagePlaybackKey(message),
-            voiceSideAction: aiAction,
-            messageAddon: aiAddon,
-            onSwipeReply: isMs ? null : () => _startReplyToMessage(message),
-            onTap: isMs
-                ? () => _toggleSelection(message)
-                : switch (message.kind) {
-                    ChatMediaKind.image => () => _openImagePreview(message),
-                    ChatMediaKind.voice => () => unawaited(_playVoice(message)),
-                    ChatMediaKind.video => () => _openVideoPlayback(message),
-                    ChatMediaKind.livePhoto => () => _openLivePhotoPlayback(
-                      message,
-                    ),
-                    // attachment==null guard — 见 Bubble.left 同款注释.
-                    ChatMediaKind.file when message.attachment != null =>
-                      () => _openFileInfo(message),
-                    _ => null,
-                  },
-            onMentionTap: isMs ? null : _resolveMentionTap,
-            mentionCandidates: _mentionCandidates,
-            // Sensitive-word warning is only attached to received text
-            // bubbles (per native iOS rule `!model.isSend`). Outgoing
-            // bubbles never reach this branch, so the only gates here
-            // are: actually a text-kind message, and the body matches
-            // a cached word. The tip helper falls back to a Chinese
-            // default when the server hasn't pushed a custom string.
-            sensitiveTipText:
-                message.isTextMessage && _isSensitiveText(message.effectiveText)
-                ? _sensitiveTipText
-                : null,
-            // 图片消息长按走通用 _showMessageActions (见上方注释).
-            onLongPress: isMs ? null : () => _showMessageActions(message),
-            onLongPressAt: isMs
-                ? null
-                : (pos) => _showMessageActionsAt(message, pos),
-          ),
+          onRetry: message.status == '发送失败'
+              ? () => _retryMessage(message)
+              : null,
+          onDelete: message.status == '发送失败'
+              ? () => setState(() => _messages.remove(message))
+              : null,
+          hasAvatarSlot: pa.hasAvatarSlot,
+          showAvatar: pa.showAvatar,
+          avatarUrl: pa.avatarUrl,
+          avatarLabel: pa.avatarLabel,
+          avatarColors: pa.avatarColors,
+          senderName: pa.senderName,
+          timeText: formatChatClock(message.timestamp),
         ),
       );
     }
-    return rows;
+
+    if (message.isGroupInviteApproval) {
+      return _wrapForMultiSelect(
+        message,
+        GroupInviteApprovalBubble(
+          text: message.text,
+          onConfirm: () => unawaited(_openGroupInviteConfirm(message)),
+          onLongPress: () => _showMessageActions(message),
+        ),
+      );
+    }
+
+    if (message.isScreenshotMessage) {
+      return SystemMessageRow(
+        text: AppLocalizations.of(
+          context,
+        ).chatScreenshotNotice(message.screenshotFromName),
+      );
+    }
+
+    if (shouldRenderModuleContentFallback(message, widget.runtime)) {
+      final pa = _peerBubbleArgs(
+        message,
+        isStreakStart: specIsStreakStart,
+        isStreakEnd: specIsStreakEnd,
+      );
+      return _wrapForMultiSelect(
+        message,
+        UnknownContentRow(
+          isMine: message.isMine,
+          text: AppLocalizations.of(context).moduleUnsupported,
+          hasAvatarSlot: pa.hasAvatarSlot,
+          showAvatar: pa.showAvatar,
+          avatarUrl: pa.avatarUrl,
+          avatarLabel: pa.avatarLabel,
+          avatarColors: pa.avatarColors,
+          senderName: pa.senderName,
+        ),
+      );
+    }
+
+    if (message.isLocationMessage) {
+      final isMs = _isMultiSelect && _canMultiSelect(message);
+      final pa = _peerBubbleArgs(
+        message,
+        isStreakStart: specIsStreakStart,
+        isStreakEnd: specIsStreakEnd,
+      );
+      return _wrapForMultiSelect(
+        message,
+        LocationBubble(
+          isMine: message.isMine,
+          title: message.locationTitle,
+          address: message.locationAddress,
+          latitude: message.locationLat,
+          longitude: message.locationLng,
+          imageUrl: message.locationImageUrl,
+          onTap: isMs
+              ? () => _toggleSelection(message)
+              : () => unawaited(_openLocation(message)),
+          onLongPress: isMs ? null : () => _showMessageActions(message),
+          onLongPressAt: isMs
+              ? null
+              : (pos) => _showMessageActionsAt(message, pos),
+          status: message.status,
+          readed: message.readed,
+          readedCount: message.readedCount,
+          unreadCount: message.unreadCount,
+          onReceiptTap: _receiptTapFor(message, disabled: isMs),
+          onRetry: message.status == '发送失败'
+              ? () => _retryMessage(message)
+              : null,
+          onDelete: message.status == '发送失败'
+              ? () => setState(() => _messages.remove(message))
+              : null,
+          hasAvatarSlot: pa.hasAvatarSlot,
+          showAvatar: pa.showAvatar,
+          avatarUrl: pa.avatarUrl,
+          avatarLabel: pa.avatarLabel,
+          avatarColors: pa.avatarColors,
+          senderName: pa.senderName,
+          timeText: formatChatClock(message.timestamp),
+        ),
+      );
+    }
+
+    if (message.isCardMessage) {
+      final isMs = _isMultiSelect && _canMultiSelect(message);
+      // 群聊 cell 框架 — 跟 Bubble.left 同模式: streak end 显头像,
+      // streak start 显发送者名, 否则只一行卡片. 1v1 无头像无名字.
+      // streak 标记从预计算 spec 取, 跟旧版逐条 prev/next visible 一致。
+      final showAvatar = _isGroupChat && !message.isMine && specIsStreakEnd;
+      final showSenderName =
+          _isGroupChat && !message.isMine && specIsStreakStart;
+      final senderName = showSenderName ? _senderName(message) : '';
+      final leadingStatus = _leadingStatusFor(message, disabled: isMs);
+      final card = CardBubble(
+        isMine: message.isMine,
+        name: message.cardName,
+        uid: message.cardUid,
+        // 透传 config 用于拼 avatar URL (DESIGN.md §5.5 / SOP §4.8).
+        config: widget.config,
+        onTap: isMs
+            ? () => _toggleSelection(message)
+            : () => unawaited(_openCardProfile(message.cardUid)),
+        onLongPress: isMs ? null : () => _showMessageActions(message),
+        onLongPressAt: isMs
+            ? null
+            : (pos) => _showMessageActionsAt(message, pos),
+        timeText: formatChatClock(message.timestamp),
+        status: message.status,
+        readed: message.readed,
+        readedCount: message.readedCount,
+        unreadCount: message.unreadCount,
+        onReceiptTap: _receiptTapFor(message, disabled: isMs),
+      );
+      // 名片头像 + 名字 + 底部对齐布局收口到 MoyuPeerBubbleFrame
+      // (跟文本/图片气泡同款), 不再外包手写 avatarSlot + Row。
+      final cellRow = Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: message.isMine
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (leadingStatus != null) ...[
+                    leadingStatus,
+                    const SizedBox(width: 6),
+                  ],
+                  card,
+                ],
+              )
+            : MoyuPeerBubbleFrame(
+                bubble: card,
+                hasAvatarSlot: _isGroupChat,
+                showAvatar: showAvatar,
+                avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
+                avatarLabel: _bubbleSenderLabel(message, widget.conversation),
+                avatarColors: _bubbleSenderColors(message, widget.conversation),
+                senderName: senderName,
+              ),
+      );
+      return _wrapForMultiSelect(message, cellRow);
+    }
+
+    if (_isUnknownContent(message)) {
+      final pa = _peerBubbleArgs(
+        message,
+        isStreakStart: specIsStreakStart,
+        isStreakEnd: specIsStreakEnd,
+      );
+      return _wrapForMultiSelect(
+        message,
+        UnknownContentRow(
+          isMine: message.isMine,
+          hasAvatarSlot: pa.hasAvatarSlot,
+          showAvatar: pa.showAvatar,
+          avatarUrl: pa.avatarUrl,
+          avatarLabel: pa.avatarLabel,
+          avatarColors: pa.avatarColors,
+          senderName: pa.senderName,
+        ),
+      );
+    }
+
+    if (message.isMine) {
+      final isMs = _isMultiSelect && _canMultiSelect(message);
+      final aiAction = _voiceAiActionFor(message, disabled: isMs);
+      final aiAddon = _messageAiAddonFor(message);
+      return _wrapForMultiSelect(
+        message,
+        Bubble.right(
+          text: message.effectiveText,
+          streamingPlaceholder: isAguiStreamingPlaceholder(message),
+          timeText: formatChatClock(message.timestamp),
+          edited: message.isEdited,
+          reactions: message.reactions,
+          onReactionTap: (emoji) => unawaited(_toggleReaction(message, emoji)),
+          uploadProgress: message.clientMsgNo.isEmpty
+              ? null
+              : _uploadProgress[message.clientMsgNo],
+          flameSecond: _flameEnabled ? _flameSecond : 0,
+          // Per-message flame deadline so the badge ticks down
+          // independently per bubble. Falls back to 0 when we
+          // don't yet have a server timestamp (local optimistic
+          // message), in which case the badge renders the static
+          // channel TTL instead of a stale countdown.
+          flameExpiresAtMs: flameExpiresAtMsForMessage(
+            flameEnabled: _flameEnabled,
+            flameSecond: _flameSecond,
+            message: message,
+          ),
+          mediaGateway: widget.mediaGateway,
+          kind: message.kind,
+          attachment: message.attachment,
+          status: message.status,
+          readed: message.readed,
+          readedCount: message.readedCount,
+          unreadCount: message.unreadCount,
+          onReceiptTap: _receiptTapFor(message, disabled: isMs),
+          replyToSender: message.replyToSender,
+          replyToText: message.replyToText,
+          replyToRevoked: message.replyToRevoked,
+          onReplyTap: _buildReplyTap(message),
+          messageKey: _messagePlaybackKey(message),
+          voiceSideAction: aiAction,
+          messageAddon: aiAddon,
+          onSwipeReply: isMs ? null : () => _startReplyToMessage(message),
+          onTap: isMs
+              ? () => _toggleSelection(message)
+              : switch (message.kind) {
+                  ChatMediaKind.image => () => _openImagePreview(message),
+                  ChatMediaKind.voice => () => unawaited(_playVoice(message)),
+                  ChatMediaKind.video => () => _openVideoPlayback(message),
+                  ChatMediaKind.livePhoto => () => _openLivePhotoPlayback(
+                    message,
+                  ),
+                  // ChatMessage.left/right 默认 kind=file 但 attachment=null
+                  // (纯文本消息构造时不传 kind → 落 file 分支). 加 when
+                  // guard 让 fallback 走 _ => null, 避免纯文本气泡 tap
+                  // 触发 _openFileInfo → 弹 "文件信息缺失" toast.
+                  ChatMediaKind.file when message.attachment != null =>
+                    () => _openFileInfo(message),
+                  _ => null,
+                },
+          // 双击文本 = 快速 ❤️ reaction. 编辑入口保留在长按菜单,
+          // 但只把原文本回填到输入框给用户再操作, 不再弹 modal.
+          // isMs 多选模式期间不要触发 reaction (会跟 toggleSelection
+          // 抢手势). messageId 非空保证 `_toggleReaction` 能发到服务端.
+          onDoubleTap:
+              !isMs &&
+                  message.contentType == 1 &&
+                  !message.revoked &&
+                  message.messageId.isNotEmpty
+              ? () => unawaited(_toggleReaction(message, 'love'))
+              : null,
+          onRetry: message.status == '发送失败'
+              ? () => _retryMessage(message)
+              : null,
+          onDelete: message.status == '发送失败'
+              ? () => setState(() => _messages.remove(message))
+              : null,
+          onMentionTap: isMs ? null : _resolveMentionTap,
+          mentionCandidates: _mentionCandidates,
+          // 所有消息 kind 走统一通用 context menu (含 reaction strip +
+          // 回复 / 转发 / 收藏 / 编辑图片 / 多选 / 撤回 / 删除). 跟 iOS
+          // 原版气泡长按 → WKMessageActionMenu 同模式. [保存到相册 /
+          // 识别二维码 / 添加到表情] 3 个图片相关 action 在 _ImageLightbox
+          // (点图进全屏) 提供, 跟 iOS WKImageBrowser 长按全屏图同位置.
+          onLongPress: isMs ? null : () => _showMessageActions(message),
+          onLongPressAt: isMs
+              ? null
+              : (pos) => _showMessageActionsAt(message, pos),
+        ),
+      );
+    }
+
+    // left bubble — avatar appears only at the streak END and the sender
+    // name only at the streak START (matches native iOS bubble position
+    // rules). In 1:1 chats there is no avatar slot at all.
+    // streak 标记从预计算 spec 取 (spec 已用 prev/next-visible map 算好,
+    // 跟旧版逐条 previousVisibleMessageIndex / nextVisibleMessageIndex 一致),
+    // 避免在 itemBuilder 内现场扫隐藏帧 (9990..9998 RTC signaling 等).
+    final isStreakStart = specIsStreakStart;
+    final isStreakEnd = specIsStreakEnd;
+    final showAvatar = _isGroupChat && isStreakEnd;
+    final showSenderName = _isGroupChat && isStreakStart;
+    final isMs = _isMultiSelect && _canMultiSelect(message);
+    final aiAction = _voiceAiActionFor(message, disabled: isMs);
+    final aiAddon = _messageAiAddonFor(message);
+    return _wrapForMultiSelect(
+      message,
+      Bubble.left(
+        avatarLabel: _bubbleSenderLabel(message, widget.conversation),
+        avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
+        text: message.effectiveText,
+        streamingPlaceholder: isAguiStreamingPlaceholder(message),
+        timeText: formatChatClock(message.timestamp),
+        // 被回复计数 — 对方/群消息气泡末尾显示 ⬅️N. 数据来自 server
+        // message_extra.reply_count → SDK 本地表 → ChatMessage.replyCount.
+        replyCount: message.replyCount,
+        edited: message.isEdited,
+        reactions: message.reactions,
+        onReactionTap: (emoji) => unawaited(_toggleReaction(message, emoji)),
+        flameSecond: _flameEnabled ? _flameSecond : 0,
+        flameExpiresAtMs: flameExpiresAtMsForMessage(
+          flameEnabled: _flameEnabled,
+          flameSecond: _flameSecond,
+          message: message,
+        ),
+        mediaGateway: widget.mediaGateway,
+        kind: message.kind,
+        attachment: message.attachment,
+        // Show the trailing red dot on received voice bubbles
+        // until the user plays it. Two clear paths:
+        //   1. Server-side flip: `_playVoice` POSTs
+        //      `markVoiceMessageRead`; the next snapshot
+        //      refresh carries `voiceStatus = 1`.
+        //   2. Local optimistic: `_locallyHeardVoiceIds`
+        //      tracks ids the user just played; OR'd here so
+        //      the dot clears instantly even if the SDK's
+        //      sync path drops the extra-side voice_status
+        //      back to 0 (a known SDK 1.7.9 gap).
+        voiceUnread:
+            message.kind == ChatMediaKind.voice &&
+            message.voiceStatus == 0 &&
+            !_locallyHeardVoiceIds.contains(message.messageId),
+        colors: _bubbleSenderColors(message, widget.conversation),
+        hasAvatarSlot: _isGroupChat,
+        showAvatar: showAvatar,
+        senderName: showSenderName ? _senderName(message) : '',
+        replyToSender: message.replyToSender,
+        replyToText: message.replyToText,
+        replyToRevoked: message.replyToRevoked,
+        onReplyTap: _buildReplyTap(message),
+        messageKey: _messagePlaybackKey(message),
+        voiceSideAction: aiAction,
+        messageAddon: aiAddon,
+        onSwipeReply: isMs ? null : () => _startReplyToMessage(message),
+        onTap: isMs
+            ? () => _toggleSelection(message)
+            : switch (message.kind) {
+                ChatMediaKind.image => () => _openImagePreview(message),
+                ChatMediaKind.voice => () => unawaited(_playVoice(message)),
+                ChatMediaKind.video => () => _openVideoPlayback(message),
+                ChatMediaKind.livePhoto => () => _openLivePhotoPlayback(
+                  message,
+                ),
+                // attachment==null guard — 见 Bubble.left 同款注释.
+                ChatMediaKind.file when message.attachment != null =>
+                  () => _openFileInfo(message),
+                _ => null,
+              },
+        onMentionTap: isMs ? null : _resolveMentionTap,
+        mentionCandidates: _mentionCandidates,
+        // Sensitive-word warning is only attached to received text
+        // bubbles (per native iOS rule `!model.isSend`). Outgoing
+        // bubbles never reach this branch, so the only gates here
+        // are: actually a text-kind message, and the body matches
+        // a cached word. The tip helper falls back to a Chinese
+        // default when the server hasn't pushed a custom string.
+        sensitiveTipText:
+            message.isTextMessage && _isSensitiveText(message.effectiveText)
+            ? _sensitiveTipText
+            : null,
+        // 图片消息长按走通用 _showMessageActions (见上方注释).
+        onLongPress: isMs ? null : () => _showMessageActions(message),
+        onLongPressAt: isMs
+            ? null
+            : (pos) => _showMessageActionsAt(message, pos),
+      ),
+    );
   }
 
   /// Tap handler for `@mention` spans inside text bubbles. Mirrors the
@@ -7983,6 +8030,7 @@ class ChatScreenState extends State<ChatScreen> {
   ///
   /// chatim 不像 iOS / Android 每次都从 DB 重新拉 (WKMessageList.arrangeMessages),
   /// 而是维护 in-memory `_messages` 列表 (跟 `_messageThreads` cache 同模式,
+  /// 自创 pattern 必须配套 sort guarantee, 否则 server
   /// sync 路径 fire 的乱序 message 累积 → UI 错乱.
   void _insertSorted(ChatMessage fresh) {
     // Hot path: 新消息 timestamp >= 末尾 → 直接 append (实时收发 99% case).
@@ -8021,6 +8069,7 @@ class ChatScreenState extends State<ChatScreen> {
   /// 瞬 SDK 常还没同步全自己发的消息, `_fetchRemoteMessagesOnOpen` 直接
   /// `_messages = fresh` 会吞掉它们 + 打乱时间线, 等 `messageStream` 再 emit 才
   /// "灌回来" (用户报: 切语言/进对话后自己的消息消失, 过一下回来)。chatim 加的
+  /// "立刻 cached + 后台 sync" pattern 必须配套 merge 保护,
   /// 不能让后台 sync 覆盖本地 in-flight。去重键跟 `_findMessageIndex` 一致
   /// (messageId / clientMsgNo), 排序键跟 `_insertSorted` 一致 (timestamp,
   /// messageSeq) 升序。
@@ -8065,6 +8114,39 @@ class ChatScreenState extends State<ChatScreen> {
       );
     });
   }
+}
+
+/// Lightweight description of one row in the chat ListView, produced by a
+/// single O(n) pass over `_messages` (see `_buildRowSpecs`). No widgets are
+/// built here — the heavy `XxxBubble(...)` construction is deferred to
+/// `ListView.builder`'s `itemBuilder` so only on-screen rows pay for it.
+sealed class _ChatRowSpec {
+  const _ChatRowSpec();
+}
+
+/// A non-message row: the history-loading spinner, a date stamp, the
+/// "以上为历史消息" history split, or the "以下为新消息" unread divider. The
+/// widget is cheap and stateless so it's safe to build eagerly during the
+/// precompute pass and hold the reference here.
+class _DividerSpec extends _ChatRowSpec {
+  const _DividerSpec(this.widget);
+  final Widget widget;
+}
+
+/// A message bubble row. `msgIndex` points back into `_messages`. The streak
+/// booleans are resolved once during the precompute pass (via the precomputed
+/// prev/next-visible maps) so `_buildMessageRow` never re-scans hidden
+/// neighbors — matching the per-branch `isStreakStart`/`isStreakEnd` the
+/// original inline builder computed on the fly.
+class _MessageSpec extends _ChatRowSpec {
+  const _MessageSpec({
+    required this.msgIndex,
+    required this.isStreakStart,
+    required this.isStreakEnd,
+  });
+  final int msgIndex;
+  final bool isStreakStart;
+  final bool isStreakEnd;
 }
 
 class _MessageAiUiState {
