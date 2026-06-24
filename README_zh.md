@@ -34,7 +34,7 @@ FoxTalk 是一个基于 TangSengDaoDao / WuKongIM 协议栈的 Flutter 即时通
 
 ```bash
 flutter pub get
-flutter run --flavor free -t lib/main_free.dart \
+flutter run \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -43,7 +43,7 @@ flutter run --flavor free -t lib/main_free.dart \
 Android Debug APK：
 
 ```bash
-flutter build apk --debug --flavor free -t lib/main_free.dart \
+flutter build apk --debug \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -53,7 +53,7 @@ iOS Release：
 cd ios
 pod install
 cd ..
-flutter build ios --release -t lib/main_free.dart \
+flutter build ios --release \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -61,8 +61,7 @@ flutter build ios --release -t lib/main_free.dart \
 
 ```text
 lib/
-  main.dart                    应用入口
-  main_free.dart               公开客户端入口
+  main.dart                    公开客户端入口
   src/app/                     应用启动与运行时
   src/auth/                    登录、会话、账号状态
   src/im/                      WuKongIM 接入
@@ -76,7 +75,7 @@ packages/
 
 ## 说明
 
-- 公开客户端入口为 `lib/main_free.dart`。
+- 公开客户端入口为 `lib/main.dart`。
 - 服务端地址通过 `CHATIM_SERVER_BASE_URL` 配置。
 - `lib/src/l10n/` 下的本地化代码由 `lib/l10n/*.arb` 生成。
 - `build/`、`.dart_tool/`、`.gradle/` 等本地构建产物已在 Git 中忽略。

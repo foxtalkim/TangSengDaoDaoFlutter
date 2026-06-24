@@ -37,7 +37,7 @@ Choose the target server through build configuration.
 
 ```bash
 flutter pub get
-flutter run --flavor free -t lib/main_free.dart \
+flutter run \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -46,7 +46,7 @@ flutter run --flavor free -t lib/main_free.dart \
 Android debug APK:
 
 ```bash
-flutter build apk --debug --flavor free -t lib/main_free.dart \
+flutter build apk --debug \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -56,7 +56,7 @@ iOS release build:
 cd ios
 pod install
 cd ..
-flutter build ios --release -t lib/main_free.dart \
+flutter build ios --release \
   --dart-define=CHATIM_SERVER_BASE_URL=<your-server-base-url>
 ```
 
@@ -64,8 +64,7 @@ flutter build ios --release -t lib/main_free.dart \
 
 ```text
 lib/
-  main.dart                   App entry
-  main_free.dart              Public profile entry
+  main.dart                   Public client entry
   src/app/                    App bootstrap and runtime
   src/auth/                   Session, login, account state
   src/im/                     WuKongIM integration
@@ -79,7 +78,7 @@ packages/
 
 ## Notes
 
-- Keep `lib/main_free.dart` as the public build entry.
+- Keep `lib/main.dart` as the public build entry.
 - Use `CHATIM_SERVER_BASE_URL` for environment-specific server configuration.
 - Generated files under `lib/src/l10n/` come from `lib/l10n/*.arb`.
 - Native build artifacts such as `build/`, `.dart_tool/`, and `.gradle/` are
