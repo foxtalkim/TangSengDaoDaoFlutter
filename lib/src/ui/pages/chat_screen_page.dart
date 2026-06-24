@@ -3450,6 +3450,27 @@ class ChatScreenState extends State<ChatScreen> {
                                               // _ComposerTextEditingController 的
                                               // buildTextSpan, 不再整体放大输入文字.
                                               child: FTextField(
+                                                // focus 时不要 forui 默认深色
+                                                // (primary)边框, 所有状态统一浅
+                                                // line 边 (用户要求「选中后不要
+                                                // 黑边」)。
+                                                style:
+                                                    FTextFieldStyleDelta.delta(
+                                                      border: FVariants.all(
+                                                        OutlineInputBorder(
+                                                          borderSide: BorderSide(
+                                                            color:
+                                                                MoyuColors.of(
+                                                                  context,
+                                                                ).line,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                8,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                 control:
                                                     FTextFieldControl.managed(
                                                       controller:
