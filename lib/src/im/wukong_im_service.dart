@@ -78,6 +78,12 @@ const String wukongStreamSeqKey = 'wukong_stream_seq';
 const String wukongStreamFlagKey = 'wukong_stream_flag';
 const String wukongStreamPayloadKey = 'wukong_stream_payload';
 
+typedef WukongAvatarInvalidationTarget = ({
+  String avatarPath,
+  String channelId,
+  int channelType,
+});
+
 abstract interface class ChatImGateway {
   /// 当前 app session 的全局单例 — _HomeShellState initState 时 set,
   /// dispose 清. 跟 UserSession.current / MomentMsgService.current 同模式,
@@ -1368,57 +1374,48 @@ class WukongImService implements ChatImGateway {
     }
 
     int channelTypeOf(dynamic param, {int fallback = 0}) {
-      if (param is Map) {
-        final raw = param['channel_type'];
-        if (raw != null) {
-          return _readInt(raw);
-        }
+      final channelType = _commandChannelType(param);
+      return channelType == 0 ? fallback : channelType;
+    }
+
+    void invalidateAvatarAndRefresh(String command, dynamic param) {
+      final targets = WukongImService.avatarInvalidationTargetsForCommand(
+        command,
+        param,
+      );
+      for (final target in targets) {
+        unawaited(
+          CachedNetworkImage.evictFromCache(
+            client.config.showUrl(target.avatarPath),
+          ),
+        );
+        unawaited(
+          refreshChannel(
+            channelId: target.channelId,
+            channelType: target.channelType,
+          ),
+        );
       }
-      return fallback;
     }
 
     // group rename / notice / mute toggle / forbidden flag etc.
     WKIM.shared.cmdManager.addOnCmdListener('moyu_channel_update', (cmd) {
       if (cmd.cmd != 'channelUpdate') return;
-      final channelId = channelIdOf(cmd.param);
-      final channelType = channelTypeOf(cmd.param);
-      if (channelId.isEmpty || channelType == 0) return;
-      unawaited(refreshChannel(channelId: channelId, channelType: channelType));
+      invalidateAvatarAndRefresh(cmd.cmd, cmd.param);
     });
 
-    // group avatar upload — 头像 URL 是固定路径 `groups/<no>/avatar`,
-    // 不带 cache buster, CachedNetworkImage 默认 disk cache 命中旧文件
-    // 永远不刷新. 先 evict 本地 cache 再 refresh channel info + 重 emit
-    // 会话列表, 让 cell 用空 cache 重下新头像.
+    // Avatar upload commands use fixed URLs (`users/<uid>/avatar`,
+    // `groups/<no>/avatar`). Evict first, then refresh channel info so both
+    // conversation cells and direct AvatarResolver users rebuild with fresh
+    // bytes.
     WKIM.shared.cmdManager.addOnCmdListener('moyu_group_avatar', (cmd) {
       if (cmd.cmd != 'groupAvatarUpdate') return;
-      final groupNo = channelIdOf(cmd.param);
-      if (groupNo.isEmpty) return;
-      unawaited(
-        CachedNetworkImage.evictFromCache(
-          client.config.showUrl('groups/$groupNo/avatar'),
-        ),
-      );
-      unawaited(
-        refreshChannel(channelId: groupNo, channelType: WKChannelType.group),
-      );
+      invalidateAvatarAndRefresh(cmd.cmd, cmd.param);
     });
 
-    // 1:1 avatar upload — server 只把 CMD 推给好友列表 (不含 sender 自己),
-    // 自己改头像后的 self-evict 在上传调用方; 这里管的是 "别人改头像 →
-    // 我看的换".
     WKIM.shared.cmdManager.addOnCmdListener('moyu_user_avatar', (cmd) {
       if (cmd.cmd != 'userAvatarUpdate') return;
-      final uid = channelIdOf(cmd.param);
-      if (uid.isEmpty) return;
-      unawaited(
-        CachedNetworkImage.evictFromCache(
-          client.config.showUrl('users/$uid/avatar'),
-        ),
-      );
-      unawaited(
-        refreshChannel(channelId: uid, channelType: WKChannelType.personal),
-      );
+      invalidateAvatarAndRefresh(cmd.cmd, cmd.param);
     });
 
     // group member add/kick/role-change. We treat it as a channel
@@ -5139,6 +5136,68 @@ class WukongImService implements ChatImGateway {
     return _readInt(channel?.remoteExtraMap?['flame_second']);
   }
 
+  static List<WukongAvatarInvalidationTarget>
+  avatarInvalidationTargetsForCommand(String command, Object? param) {
+    WukongAvatarInvalidationTarget? targetFor(
+      String channelId,
+      int channelType,
+    ) {
+      final id = channelId.trim();
+      if (id.isEmpty) return null;
+      return switch (channelType) {
+        WKChannelType.personal => (
+          avatarPath: 'users/$id/avatar',
+          channelId: id,
+          channelType: WKChannelType.personal,
+        ),
+        WKChannelType.group => (
+          avatarPath: 'groups/$id/avatar',
+          channelId: id,
+          channelType: WKChannelType.group,
+        ),
+        _ => null,
+      };
+    }
+
+    WukongAvatarInvalidationTarget? target;
+    switch (command.trim()) {
+      case 'userAvatarUpdate':
+        target = targetFor(
+          _commandString(param, const [
+            'uid',
+            'channel_id',
+            'channelId',
+            'channelID',
+          ]),
+          WKChannelType.personal,
+        );
+      case 'groupAvatarUpdate':
+        target = targetFor(
+          _commandString(param, const [
+            'group_no',
+            'groupNo',
+            'channel_id',
+            'channelId',
+            'channelID',
+          ]),
+          WKChannelType.group,
+        );
+      case 'channelUpdate':
+        target = targetFor(
+          _commandString(param, const [
+            'channel_id',
+            'channelId',
+            'channelID',
+            'uid',
+            'group_no',
+            'groupNo',
+          ]),
+          _commandChannelType(param),
+        );
+    }
+    return target == null ? const [] : [target];
+  }
+
   /// Reads the per-channel screenshot-notification flag, applying native
   /// defaults when the server hasn't surfaced an explicit value:
   /// - 1:1 (personal) channels default to **off** — screenshot broadcast
@@ -5260,6 +5319,31 @@ class WukongImService implements ChatImGateway {
       return Map<String, dynamic>.from(value);
     }
     return const {};
+  }
+
+  static String _commandString(Object? param, List<String> keys) {
+    final source = _readMap(param);
+    for (final key in keys) {
+      final value = source[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    final channel = _readMap(source['channel']);
+    for (final key in keys) {
+      final value = channel[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  static int _commandChannelType(Object? param) {
+    final source = _readMap(param);
+    final raw =
+        source['channel_type'] ??
+        source['channelType'] ??
+        source['channel_type_int'] ??
+        _readMap(source['channel'])['channel_type'] ??
+        _readMap(source['channel'])['channelType'];
+    return _readInt(raw);
   }
 
   static List<dynamic> _readList(Object? value) {
