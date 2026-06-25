@@ -30,6 +30,7 @@ class Bubble extends StatelessWidget {
     this.kind = ChatMediaKind.file,
     this.attachment,
     this.onTap,
+    this.onAvatarTap,
     this.onLongPress,
     this.onLongPressAt,
     this.senderName = '',
@@ -115,6 +116,7 @@ class Bubble extends StatelessWidget {
        senderName = '',
        hasAvatarSlot = false,
        showAvatar = false,
+       onAvatarTap = null,
        // Outgoing bubbles never carry the sensitive-word warning row
        // (mirrors native iOS `!model.isSend` gate); hardcode null so
        // the build path's `showTip` is always false.
@@ -142,6 +144,10 @@ class Bubble extends StatelessWidget {
   final VoidCallback? onRetry;
   final VoidCallback? onDelete;
   final VoidCallback? onTap;
+
+  /// Tap handler for the visible peer avatar on group left bubbles.
+  /// Null keeps the avatar as a passive visual slot.
+  final VoidCallback? onAvatarTap;
 
   /// 双击触发的回调 — 调用方决定具体行为（例如快速 reaction）。
   /// 仅在需要响应 double-tap 的消息上传入 non-null. null 时 GestureDetector
@@ -652,11 +658,7 @@ class Bubble extends StatelessWidget {
               : Stack(
                   children: [
                     bubbleBox,
-                    Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: mediaMetaOverlay,
-                    ),
+                    Positioned(right: 8, bottom: 8, child: mediaMetaOverlay),
                   ],
                 ),
         ),
@@ -813,6 +815,7 @@ class Bubble extends StatelessWidget {
             avatarLabel: avatarLabel,
             avatarColors: colors,
             senderName: senderName,
+            onAvatarTap: onAvatarTap,
           );
 
     final hasFlame = flameSecond > 0;

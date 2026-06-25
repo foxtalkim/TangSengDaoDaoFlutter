@@ -145,6 +145,7 @@ class UnknownContentRow extends StatelessWidget {
     this.avatarLabel = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.onAvatarTap,
   });
 
   final bool isMine;
@@ -155,6 +156,7 @@ class UnknownContentRow extends StatelessWidget {
   final String avatarLabel;
   final List<Color> avatarColors;
   final String senderName;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -190,6 +192,7 @@ class UnknownContentRow extends StatelessWidget {
               avatarLabel: avatarLabel,
               avatarColors: avatarColors,
               senderName: senderName,
+              onAvatarTap: onAvatarTap,
             )
           : Row(
               mainAxisAlignment: isMine

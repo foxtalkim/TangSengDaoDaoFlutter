@@ -181,6 +181,7 @@ class MergeForwardBubble extends StatelessWidget {
     this.avatarLabel = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.onAvatarTap,
     this.timeText = '',
   });
 
@@ -193,6 +194,7 @@ class MergeForwardBubble extends StatelessWidget {
   final String avatarLabel;
   final List<Color> avatarColors;
   final String senderName;
+  final VoidCallback? onAvatarTap;
   final String timeText;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -332,6 +334,7 @@ class MergeForwardBubble extends StatelessWidget {
               avatarLabel: avatarLabel,
               avatarColors: avatarColors,
               senderName: senderName,
+              onAvatarTap: onAvatarTap,
             )
           : Row(
               mainAxisAlignment: isMine

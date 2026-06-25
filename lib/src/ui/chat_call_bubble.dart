@@ -26,6 +26,7 @@ class CallBubble extends StatelessWidget {
     this.avatarUrl = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.onAvatarTap,
     this.status,
     this.readed = false,
     this.readedCount = 0,
@@ -51,6 +52,7 @@ class CallBubble extends StatelessWidget {
   final String avatarLabel;
   final String avatarUrl;
   final List<Color> avatarColors;
+  final VoidCallback? onAvatarTap;
 
   /// 群聊 streak start 时显发送者名字, 跟普通气泡同款 14pt.
   final String senderName;
@@ -162,6 +164,7 @@ class CallBubble extends StatelessWidget {
               avatarLabel: avatarLabel,
               avatarColors: avatarColors,
               senderName: senderName,
+              onAvatarTap: onAvatarTap,
             ),
     );
   }

@@ -5571,6 +5571,7 @@ class ChatScreenState extends State<ChatScreen> {
     String avatarLabel,
     List<Color> avatarColors,
     String senderName,
+    VoidCallback? onAvatarTap,
   })
   _peerBubbleArgs(
     ChatMessage message, {
@@ -5585,6 +5586,7 @@ class ChatScreenState extends State<ChatScreen> {
         avatarLabel: '',
         avatarColors: const <Color>[],
         senderName: '',
+        onAvatarTap: null,
       );
     }
     return (
@@ -5594,7 +5596,15 @@ class ChatScreenState extends State<ChatScreen> {
       avatarLabel: _bubbleSenderLabel(message, widget.conversation),
       avatarColors: _bubbleSenderColors(message, widget.conversation),
       senderName: isStreakStart ? _senderName(message) : '',
+      onAvatarTap: _peerAvatarTapFor(message),
     );
+  }
+
+  VoidCallback? _peerAvatarTapFor(ChatMessage message) {
+    if (!_isGroupChat || message.isMine) return null;
+    final uid = message.fromUid.trim();
+    if (uid.isEmpty || uid == widget.loginUid) return null;
+    return () => unawaited(_openCardProfile(uid));
   }
 
   /// True for messages whose content type isn't recognized by this
@@ -7225,6 +7235,7 @@ class ChatScreenState extends State<ChatScreen> {
           avatarUrl: _bubbleSenderAvatar(message, widget.conversation),
           avatarColors: _bubbleSenderColors(message, widget.conversation),
           senderName: showSenderName ? _senderName(message) : '',
+          onAvatarTap: _peerAvatarTapFor(message),
           // In a group conversation re-tap on an old call bubble
           // must NOT go through the P2P path — that would send
           // `/rtc/p2p/invoke` with the group id as peer_uid and
@@ -7296,6 +7307,7 @@ class ChatScreenState extends State<ChatScreen> {
           avatarLabel: pa.avatarLabel,
           avatarColors: pa.avatarColors,
           senderName: pa.senderName,
+          onAvatarTap: pa.onAvatarTap,
           timeText: formatChatClock(message.timestamp),
         ),
       );
@@ -7337,6 +7349,7 @@ class ChatScreenState extends State<ChatScreen> {
           avatarLabel: pa.avatarLabel,
           avatarColors: pa.avatarColors,
           senderName: pa.senderName,
+          onAvatarTap: pa.onAvatarTap,
         ),
       );
     }
@@ -7381,6 +7394,7 @@ class ChatScreenState extends State<ChatScreen> {
           avatarLabel: pa.avatarLabel,
           avatarColors: pa.avatarColors,
           senderName: pa.senderName,
+          onAvatarTap: pa.onAvatarTap,
           timeText: formatChatClock(message.timestamp),
         ),
       );
@@ -7442,6 +7456,7 @@ class ChatScreenState extends State<ChatScreen> {
                 avatarLabel: _bubbleSenderLabel(message, widget.conversation),
                 avatarColors: _bubbleSenderColors(message, widget.conversation),
                 senderName: senderName,
+                onAvatarTap: _peerAvatarTapFor(message),
               ),
       );
       return _wrapForMultiSelect(message, cellRow);
@@ -7463,6 +7478,7 @@ class ChatScreenState extends State<ChatScreen> {
           avatarLabel: pa.avatarLabel,
           avatarColors: pa.avatarColors,
           senderName: pa.senderName,
+          onAvatarTap: pa.onAvatarTap,
         ),
       );
     }
@@ -7612,6 +7628,7 @@ class ChatScreenState extends State<ChatScreen> {
         colors: _bubbleSenderColors(message, widget.conversation),
         hasAvatarSlot: _isGroupChat,
         showAvatar: showAvatar,
+        onAvatarTap: _peerAvatarTapFor(message),
         senderName: showSenderName ? _senderName(message) : '',
         replyToSender: message.replyToSender,
         replyToText: message.replyToText,

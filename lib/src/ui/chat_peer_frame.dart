@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 
 import 'moyu_theme.dart';
 import 'moyu_widgets.dart';
@@ -28,6 +29,7 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
     this.avatarColors = const [],
     this.senderName = '',
     this.footer,
+    this.onAvatarTap,
   });
 
   /// 气泡本体（不含头像 / 名字）。必须是**非 Flexible** widget —— 本框架
@@ -45,6 +47,7 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
   final String avatarUrl;
   final String avatarLabel;
   final List<Color> avatarColors;
+  final VoidCallback? onAvatarTap;
 
   /// streak 首条的发送者名；空串表示不显示（1v1 或 streak 后续消息）。
   final String senderName;
@@ -59,6 +62,22 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget avatar = MoyuResolvedAvatar.raw(
+      label: avatarLabel,
+      size: 38,
+      colors: avatarColors,
+      online: false,
+      imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
+    );
+    if (showAvatar && onAvatarTap != null) {
+      avatar = FTappable(
+        key: const ValueKey('moyu.peerBubble.avatarTapTarget'),
+        onPress: onAvatarTap,
+        behavior: HitTestBehavior.opaque,
+        child: avatar,
+      );
+    }
+
     final body = senderName.isEmpty
         ? bubble
         : Column(
@@ -90,13 +109,7 @@ class MoyuPeerBubbleFrame extends StatelessWidget {
             maintainSize: true,
             maintainAnimation: true,
             maintainState: true,
-            child: MoyuResolvedAvatar.raw(
-              label: avatarLabel,
-              size: 38,
-              colors: avatarColors,
-              online: false,
-              imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
-            ),
+            child: avatar,
           ),
           const SizedBox(width: 8),
         ],

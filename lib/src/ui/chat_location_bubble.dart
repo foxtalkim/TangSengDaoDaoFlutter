@@ -39,6 +39,7 @@ class LocationBubble extends StatelessWidget {
     this.avatarLabel = '',
     this.avatarColors = const [],
     this.senderName = '',
+    this.onAvatarTap,
     this.timeText = '',
   });
 
@@ -53,6 +54,7 @@ class LocationBubble extends StatelessWidget {
   final String avatarLabel;
   final List<Color> avatarColors;
   final String senderName;
+  final VoidCallback? onAvatarTap;
   final String timeText;
 
   /// 服务端 mini-map 截图 URL. 非空时 preview 区域用 CachedNetworkImage 渲染,
@@ -146,6 +148,7 @@ class LocationBubble extends StatelessWidget {
               avatarLabel: avatarLabel,
               avatarColors: avatarColors,
               senderName: senderName,
+              onAvatarTap: onAvatarTap,
             )
           : Row(
               mainAxisAlignment: isMine
