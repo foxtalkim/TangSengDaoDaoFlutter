@@ -4834,16 +4834,9 @@ class WukongImService implements ChatImGateway {
       replyCount: extra?.replyCount ?? 0,
       contentType: message.contentType,
       callType: content is WKCallSystemContent ? content.callType : 0,
-      // SDK 1.7.9's `WKCardContent.decodeJson` has a typo where it
-      // assigns `vercode = readString(json, 'uid')` — so the decoded
-      // `content.vercode` is actually the uid, not a real verification
-      // code. Propagating that downstream would leak the carded user's
-      // uid as a fake vercode on forward, breaking auto-add semantics.
-      // Until the SDK is fixed (or we manually decode cards ourselves),
-      // we leave `cardVercode` empty for received cards. The receiver's
-      // 添加好友 path falls back to a normal apply/approve flow, which
-      // is correct (just slightly less friction).
-      cardVercode: '',
+      // Preserve the card source token so tapping a received card can
+      // send friend/apply with the same proof as native clients.
+      cardVercode: content is WKCardContent ? _safeCardVercode(content) : '',
       mergeForwardTitle: content is WKMergeForwardContent
           ? content.resolveTitle()
           : '',
@@ -5507,6 +5500,13 @@ class WukongImService implements ChatImGateway {
       }
     }
     return 0;
+  }
+
+  static String _safeCardVercode(WKCardContent content) {
+    final value = content.vercode?.trim() ?? '';
+    if (value.isEmpty) return '';
+    if (value == content.uid.trim()) return '';
+    return value;
   }
 
   static String _string(Object? value, {String fallback = ''}) {

@@ -4328,10 +4328,11 @@ class ChatScreenState extends State<ChatScreen> {
         _actionMessage = null;
         _actionNotice = null;
       });
-      // 名片长按弹添加好友 sheet, 对齐 iOS WKCardCell. _openCardProfile
-      // 已经支持 stranger 模式 (走 users/<uid> fetch + 在名片详情页点"添加")
-      // - 复用入口避免 fork 第二条 add-friend 链路.
-      unawaited(_openCardProfile(message.cardUid));
+      // 名片长按弹添加好友 sheet, 对齐 iOS WKCardCell. 透传名片来源
+      // token，避免进入详情页后 friend/apply 缺 vercode。
+      unawaited(
+        _openCardProfile(message.cardUid, vercode: message.cardVercode),
+      );
       return;
     }
     if (action.id == ModuleActionIds.messageReactions) {
@@ -5692,7 +5693,7 @@ class ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _openCardProfile(String uid) async {
+  Future<void> _openCardProfile(String uid, {String vercode = ''}) async {
     final normalized = uid.trim();
     if (normalized.isEmpty) return;
     for (final c in widget.contacts) {
@@ -5764,11 +5765,15 @@ class ChatScreenState extends State<ChatScreen> {
       }
       final hash = fetched.uid.codeUnits.fold<int>(0, (a, b) => a + b);
       final colors = MoyuAvatarGradients.at(hash);
-      final stranger = UiContact.fromSocial(
+      final cardVercode = vercode.trim();
+      final fetchedContact = UiContact.fromSocial(
         fetched,
         colors: colors,
         config: widget.config,
       );
+      final stranger = cardVercode.isEmpty
+          ? fetchedContact
+          : fetchedContact.copyWith(vercode: cardVercode);
       setState(() => _actionNotice = null);
       unawaited(
         pushPage(
@@ -7399,7 +7404,9 @@ class ChatScreenState extends State<ChatScreen> {
         config: widget.config,
         onTap: isMs
             ? () => _toggleSelection(message)
-            : () => unawaited(_openCardProfile(message.cardUid)),
+            : () => unawaited(
+                _openCardProfile(message.cardUid, vercode: message.cardVercode),
+              ),
         onLongPress: isMs ? null : () => _showMessageActions(message),
         onLongPressAt: isMs
             ? null

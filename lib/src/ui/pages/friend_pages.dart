@@ -1821,10 +1821,11 @@ class _ApplyFriendPageState extends State<_ApplyFriendPage> {
     }
     setState(() => _submitting = true);
     try {
+      final vercode = await _resolveApplyVercode(gateway);
       await gateway.applyFriend(
         uid: widget.contact.uid,
         remark: _remarkController.text.trim(),
-        vercode: widget.contact.vercode,
+        vercode: vercode,
       );
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -1845,6 +1846,32 @@ class _ApplyFriendPageState extends State<_ApplyFriendPage> {
       setState(() => _submitting = false);
       MoyuToast.show(context, t.friendRequestSendFailed(error.toString()));
     }
+  }
+
+  Future<String> _resolveApplyVercode(ChatSocialGateway gateway) async {
+    final direct = widget.contact.vercode.trim();
+    if (direct.isNotEmpty) return direct;
+
+    final seen = <String>{};
+    final keywords = [
+      widget.contact.subtitle.trim(),
+      widget.contact.username.trim(),
+      widget.contact.uid.trim(),
+    ].where((value) => value.isNotEmpty && seen.add(value));
+
+    for (final keyword in keywords) {
+      try {
+        final result = await gateway.searchUser(keyword);
+        final contact = result.contact;
+        if (!result.exist || contact == null) continue;
+        if (contact.uid != widget.contact.uid) continue;
+        final vercode = contact.vercode.trim();
+        if (vercode.isNotEmpty) return vercode;
+      } catch (error) {
+        debugPrint('[apply-friend] searchUser($keyword) failed: $error');
+      }
+    }
+    return '';
   }
 
   @override
@@ -1919,7 +1946,7 @@ class _ApplyFriendPageState extends State<_ApplyFriendPage> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           rows: [
             SizedBox(
-              height: 88,
+              height: 96,
               child: FTextField(
                 control: FTextFieldControl.managed(
                   controller: _remarkController,
