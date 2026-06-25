@@ -91,6 +91,36 @@ import 'friend_pages.dart';
 import 'pickers_pages.dart';
 import 'settings_pages.dart';
 
+@visibleForTesting
+({String url, bool isRemote}) selectChatMediaPlaybackSourceForTesting({
+  required String localSource,
+  required String remoteSource,
+  required String Function(String rawRemote) resolveRemote,
+}) {
+  return _selectChatMediaPlaybackSource(
+    localSource: localSource,
+    remoteSource: remoteSource,
+    resolveRemote: resolveRemote,
+  );
+}
+
+({String url, bool isRemote}) _selectChatMediaPlaybackSource({
+  required String localSource,
+  required String remoteSource,
+  required String Function(String rawRemote) resolveRemote,
+}) {
+  final remote = remoteSource.trim();
+  if (remote.isNotEmpty) {
+    return (url: resolveRemote(remote), isRemote: true);
+  }
+
+  final local = localSource.trim();
+  if (local.isNotEmpty) {
+    return (url: local, isRemote: false);
+  }
+  return (url: '', isRemote: false);
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
@@ -5886,15 +5916,18 @@ class ChatScreenState extends State<ChatScreen> {
     }
     final stillRaw = attachment.remoteUrl.trim();
     final stillLocal = attachment.localPath.trim();
-    final stillUrl = stillRaw.isNotEmpty
-        ? widget.config.showUrl(stillRaw)
-        : stillLocal;
     final videoRaw = attachment.livePhotoVideoUrl.trim();
     final videoLocal = attachment.livePhotoVideoLocalPath.trim();
-    final isVideoRemote = videoRaw.isNotEmpty;
-    final videoUrl = isVideoRemote
-        ? widget.config.showUrl(videoRaw)
-        : videoLocal;
+    final stillSource = _selectChatMediaPlaybackSource(
+      localSource: stillLocal,
+      remoteSource: stillRaw,
+      resolveRemote: widget.config.showUrl,
+    );
+    final videoSource = _selectChatMediaPlaybackSource(
+      localSource: videoLocal,
+      remoteSource: videoRaw,
+      resolveRemote: widget.config.showUrl,
+    );
     final feature = _runtime?.registry.featureById(
       ModuleFeatureIds.livePhotoViewerPageBuilder,
     );
@@ -5910,9 +5943,11 @@ class ChatScreenState extends State<ChatScreen> {
     pushPage(
       context,
       builder(
-        stillUrl: stillUrl,
-        videoUrl: videoUrl,
-        token: (stillRaw.isNotEmpty || isVideoRemote) ? widget.loginToken : '',
+        stillUrl: stillSource.url,
+        videoUrl: videoSource.url,
+        token: (stillSource.isRemote || videoSource.isRemote)
+            ? widget.loginToken
+            : '',
       ),
     );
   }
