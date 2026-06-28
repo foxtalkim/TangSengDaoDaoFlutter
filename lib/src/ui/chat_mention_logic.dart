@@ -170,8 +170,10 @@ List<ChatContact> filterMentionMembers({
         member.remark.toLowerCase().contains(lower)) {
       list.add(member);
     }
-    if (list.length >= 8) break;
   }
+  // 不 cap 数量 — iOS `WKUserHandleVC` 默认显示 3.5 行可滚, items 全量;
+  // MentionPicker (maxHeight 220 + ListView.builder shrinkWrap) 已支持滚.
+  // 旧的硬 cap 8 个让大群第 9 个之后的成员永远 @ 不到, 跟 iOS 不一致.
   return list;
 }
 
