@@ -65,6 +65,7 @@ class ConversationSettingsPage extends StatefulWidget {
     this.onJumpToMessage,
     this.onGroupRemarkChanged,
     this.onContactRemoved,
+    this.onOpenContactChat,
     this.contacts = const [],
   });
 
@@ -102,6 +103,11 @@ class ConversationSettingsPage extends StatefulWidget {
   final ValueChanged<String>? onJumpToMessage;
   final ValueChanged<String>? onGroupRemarkChanged;
   final ValueChanged<String>? onContactRemoved;
+
+  /// 群成员名片页 "发消息" 按钮回调 — pop 到根 + push 目标成员的 1:1 chat
+  /// (对齐 iOS `WKUserInfoVC.m:503` sendBtnPressed). 不传 → fallback 只
+  /// pop 回群聊 (老兼容路径).
+  final Future<void> Function(UiContact contact)? onOpenContactChat;
 
   @override
   State<ConversationSettingsPage> createState() =>
@@ -875,25 +881,35 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
 
   /// Member-avatar tap in chat detail → push the iOS-style profile
   /// page. Matches native `WKConversationPersonSettingVC.membberAvatarClick`
-  /// which invokes `WKPOINT_USER_INFO` to surface `WKUserInfoVC`. The
-  /// 发消息 button inside the profile pops back to the chat (one extra
-  /// pop here closes the settings page so we land on the conversation).
+  /// which invokes `WKPOINT_USER_INFO` to surface `WKUserInfoVC`.
   ///
   /// 在 widget.contacts (friend/sync 全量好友列表) 里查同 uid 的更
   /// 完整的 UiContact —— 服务端 /groups/<no>/members 不返 short_no，
   /// 而 friend/sync 会返。命中则用 friend 版本（带 subtitle），不然
   /// 退回 chat-settings 本地的 contact（陌生群友）。
   /// 同时透传 widget.config 让 ContactDetailPage 能 resolve 头像 URL。
+  ///
+  /// `isStranger` 判定: 在好友列表里查不到且不是自己 → 陌生人.
+  /// ContactDetailPage 据此切按钮 (好友显示 "发消息", 陌生人显示
+  /// "申请添加"), 对齐 iOS `WKUserInfoVC.m:184-198`.
+  ///
+  /// `onOpenChat` 走 widget.onOpenContactChat 真开 1:1 chat, 对齐 iOS
+  /// `WKUserInfoVC.m:503` sendBtnPressed (pop 到根 + push 新 conversation).
+  /// 不传时 fallback 旧的 "只 pop 回群聊" 路径, 保留老调用兼容.
   void _openMemberProfile(UiContact contact) {
     UiContact resolved = contact;
+    var inFriends = false;
     if (contact.uid.isNotEmpty) {
       for (final c in widget.contacts) {
         if (c.uid == contact.uid) {
           resolved = c;
+          inFriends = true;
           break;
         }
       }
     }
+    final isStranger = !inFriends && resolved.uid != widget.loginUid;
+    final opener = widget.onOpenContactChat;
     pushPage(
       context,
       ContactDetailPage(
@@ -903,12 +919,17 @@ class ConversationSettingsPageState extends State<ConversationSettingsPage> {
         socialGateway: widget.socialGateway,
         imGateway: widget.imGateway,
         config: widget.config,
+        isStranger: isStranger,
         onContactRemoved: widget.onContactRemoved,
-        onOpenChat: (_) async {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        },
+        onOpenChat: opener != null
+            ? (target) async {
+                await opener(target);
+              }
+            : (_) async {
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
       ),
     );
   }

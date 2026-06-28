@@ -3158,6 +3158,12 @@ class ChatScreenState extends State<ChatScreen> {
                                     onDeleteConversation:
                                         widget.onDeleteConversation,
                                     onContactRemoved: widget.onContactRemoved,
+                                    // 群成员名片 "发消息" 走 home_shell
+                                    // `_openContactChat` 链路, 对齐 iOS
+                                    // WKUserInfoVC sendBtnPressed (pop 到根 +
+                                    // push 1:1 chat). 没传则 fallback 老的
+                                    // "只 pop 回群聊" 行为.
+                                    onOpenContactChat: widget.onOpenContactChat,
                                     onScreenshotNotifyChanged: (v) {
                                       // The settings PUT is async; if the
                                       // user pops the chat between toggle
